@@ -30,7 +30,7 @@ async def _pace():
     _last_send[0] = time.time()
 
 
-@register("astrbot_plugin_wuzihang_delay", "wuzihang", "拟人化：节流/正在输入/连发/表情包/引用", "1.3.0")
+@register("persona_humanizer", "your-name", "拟人化：节流/正在输入/连发/表情包/引用", "1.3.0")
 class WuzihangDelayPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
