@@ -1,0 +1,6 @@
+name: group_lurker
+desc: 群聊围观模式——不@也按概率随机插话，带冷却/每日上限/静默时段
+help: 自动生效。可在 main.py 顶部调整 CHANCE/GROUP_COOLDOWN/DAILY_CAP
+version: v1.0.0
+author: your-name
+repo: ""

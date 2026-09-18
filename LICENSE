@@ -1,0 +1,33 @@
+GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+ADDITIONAL TERMS (per GPL v3 §7):
+
+1. Attribution: The persona-distillation pipeline in the tools/ directory
+   derives from techniques documented by the QQBackup community projects
+   (https://github.com/QQBackup). Their work is gratefully acknowledged.
+
+2. Intended Use Restriction: This software is intended for creating
+   conversational agents that emulate the PERSON WHO OPERATES THE SOFTWARE
+   (self-distillation only). Emulating a third party requires that party's
+   explicit informed consent. Deployments must allow the agent to disclose
+   that it is an AI when directly and seriously asked.
+
+3. No Warranty for Platform Compliance: Automated operation of messaging
+   accounts may violate the terms of service of the underlying platform.
+   Users assume all risks including account restriction.

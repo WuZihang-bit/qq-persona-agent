@@ -1,0 +1,48 @@
+# ============================================================
+# 数字分身 bot 配置模板
+# 复制为 config.yaml 并填入你自己的信息。config.yaml 已被 gitignore，永不入库。
+# ============================================================
+
+# ---- 身份（全部会被注入插件与人格，切勿提交真实文件）----
+identity:
+  bot_uin: "10001"            # 跑 bot 的小号 QQ 号
+  master_uin: "10002"         # 你自己的大号（主人特权：高优先级接话）
+  owner_name: "某甲"           # 你的称呼（会写进示例人格，建议用网名）
+
+# ---- 人格 ----
+persona:
+  file: "personas/example/persona.txt"   # 人格提示词路径
+
+# ---- 拟人化参数（persona-humanizer / group-lurker 共用）----
+behavior:
+  chance: 0.08                # 群聊围观插话概率（每条消息）
+  group_cooldown: 480         # 同一群普通插话最小间隔（秒）
+  master_cooldown: 45         # 主人发言接话冷却（秒）
+  daily_cap: 40               # 每日插话总上限
+  silent_start: "23:30"       # 静默时段起（主人发言豁免）
+  silent_end: "08:00"         # 静默时段止
+  send_gap_min: 3.5           # 全局两条消息最小间隔（秒）
+  send_gap_max: 7.0
+  quote_min_len: 10           # 群聊回复超过该字数自动引用触发消息
+
+# ---- 表情包 ----
+emoji:
+  dir: "data/fensheng/emojis" # 表情包库目录（index.json 同目录）
+  auto_collect: true          # 群里自动收集表情包（需配置 VLM）
+
+# ---- 大模型 ----
+llm:
+  # AstrBot 里配置 provider；这里只存提示性默认值
+  primary: "deepseek"         # deepseek / glm / ...
+  backup: "glm"
+
+# ---- 视觉模型（表情包自动打标签用）----
+vlm:
+  api_key: "填你的GLM key"
+  base_url: "https://open.bigmodel.cn/api/paas/v4"
+  model: "glm-5.3-flash"
+
+# ---- 联网搜索 ----
+search:
+  provider: "tavily"
+  tavily_key: "tvly-xxxxxxxx"

@@ -1,0 +1,35 @@
+# 敏感与本地数据 —— 永不提交
+config.yaml
+*.key
+*key.txt
+db_key*
+*.db
+*.db.plain
+*.bak
+*.jsonl
+data/
+downloads/
+temp/
+
+# 隐私
+personas/*/memory/
+personas/*/friends/
+**/my_messages*
+**/candidates*
+
+# 表情包（版权）
+plugins/*/emojis/*.gif
+plugins/*/emojis/*.jpg
+plugins/*/emojis/*.png
+# 保留占位图
+!plugins/**/assets/example_*.jpg
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 系统
+.DS_Store
+Thumbs.db

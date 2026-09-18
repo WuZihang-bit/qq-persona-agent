@@ -1,0 +1,6 @@
+name: persona_humanizer
+desc: 让分身像真人——回复随机延迟，私聊触发"对方正在输入..."状态
+help: 自动生效，无需指令
+version: v1.2.0
+author: your-name
+repo: ""
