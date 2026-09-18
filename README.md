@@ -51,6 +51,8 @@ QQ小号 ◄── OneBot v11 ──► NapCatQQ        # 协议端（第三方�
 - [部署指南](docs/deploy.md)
 - [人格蒸馏流水线](docs/distill.md) ★ 核心玩法
 - [插件说明](docs/plugins.md)
+- [路线图](docs/roadmap.md)
+- [发布操作手册](docs/publish.md)
 - [风控与封号](docs/risk.md)
 - [伦理与法律边界](docs/ethics.md)
 
