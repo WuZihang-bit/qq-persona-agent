@@ -31,7 +31,7 @@ QUOTE_TAG = re.compile(r"\[++\s*QUOTE\s*[:：][^\]]*\]+", re.IGNORECASE)
 
 
 @register("group_lurker", "your-name", "群聊围观+主人发言捧场", "1.1.0")
-class WuzihangGroupPlugin(Star):
+class GroupLurkerPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.windows = defaultdict(lambda: deque(maxlen=WINDOW))

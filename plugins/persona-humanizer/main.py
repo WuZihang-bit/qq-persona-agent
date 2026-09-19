@@ -31,7 +31,7 @@ async def _pace():
 
 
 @register("persona_humanizer", "your-name", "拟人化：节流/正在输入/连发/表情包/引用", "1.3.0")
-class WuzihangDelayPlugin(Star):
+class PersonaHumanizerPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.win_ids = defaultdict(lambda: deque(maxlen=20))
