@@ -14,6 +14,20 @@ def build_index():
     """全量重建索引: 文档->切片->词频表"""
     os.makedirs(KB_DIR, exist_ok=True)
     chunks = []
+    # 梗知识库/搜索知识回流(json -> 切片)
+    extra = []
+    for jf in [r'F:\yuanfei_skillot\dataensheng\memes.json',
+               os.path.join(KB_DIR, '..', 'knowledge.json')]:
+        if os.path.exists(jf):
+            try:
+                d = json.load(open(jf, encoding='utf-8'))
+                if isinstance(d, dict):
+                    extra += [f"{k}: {json.dumps(v, ensure_ascii=False)[:200]}" for k, v in d.items()]
+                elif isinstance(d, list):
+                    for e in d:
+                        extra.append(json.dumps(e, ensure_ascii=False)[:250])
+            except Exception:
+                pass
     for root, _, files in os.walk(KB_DIR):
         for fn in files:
             if not fn.endswith(('.md', '.txt')) or fn.startswith('_'):
@@ -33,6 +47,9 @@ def build_index():
                 words = set(re.findall(r'[\u4e00-\u9fff]{2,4}|[a-zA-Z]{3,}', piece))
                 chunks.append({'doc': os.path.relpath(fp, KB_DIR), 'off': i,
                                'text': piece, 'tf': {w: 1 for w in words}})
+    for j, ex in enumerate(extra):
+        words = set(re.findall(r'[一-鿿]{2,4}|[a-zA-Z]{3,}', ex))
+        chunks.append({'doc': 'learned.json', 'off': j, 'text': ex, 'tf': {w: 1 for w in words}})
     json.dump(chunks, open(INDEX_FP, 'w', encoding='utf-8'), ensure_ascii=False)
     return len(chunks)
 
