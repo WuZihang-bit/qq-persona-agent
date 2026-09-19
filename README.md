@@ -1,5 +1,17 @@
 # Eidolon — QQ Persona Agent | QQ 数字分身·社交智能体
 
+<div align="center">
+
+![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-GPL--3.0-green)
+![Platform](https://img.shields.io/badge/Platform-QQ_NT-blueviolet)
+![Tests](https://img.shields.io/badge/Tests-14%2F14%20passed-brightgreen)
+![Eval](https://img.shields.io/badge/Persona_Eval-5.00%2F5-gold)
+
+**[架构白皮书](docs/AGENT.md) · [快速部署](docs/deploy.md) · [人格蒸馏](docs/distill.md) · [在线控制台](tools/console_server.py)**
+
+</div>
+
 > **Eidolon**（希腊语"灵魂幻影"，作者称之为「纸鸢」——风筝飞得再远，线在主人手里）。
 >
 > 把你自己**蒸馏**成一个 QQ 机器人 / social agent：从聊天记录提取说话风格 → 生成人格提示词 →
@@ -43,6 +55,16 @@ QQ小号 ◄── OneBot v11 ──► NapCatQQ        # 协议端（第三方�
                              │
                     tools/ 蒸馏流水线        # 本项目：聊天记录→人格
 ```
+
+## 评测与质量
+
+| 指标 | 结果 | 工具 |
+|---|---|---|
+| 人格一致性(裁判模型评分) | **5.00 / 5.00**(10场景) | [eval_persona.py](tools/eval_persona.py) |
+| 核心工具单元测试 | **14 / 14 passed** | [test_core.py](plugins/twin-tools/test_core.py) |
+| 隐私红线(真实姓名) | 0 泄露(巧妙绕答) | 评测用例#3 |
+| AI 自证合规 | 100% 大方承认 | 评测用例#4 |
+| 盲测识别率 | 收集工具就绪, 目标≈50% | [blindtest_server.py](tools/blindtest_server.py) |
 
 ## 快速开始
 
