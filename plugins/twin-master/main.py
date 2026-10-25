@@ -1,4 +1,5 @@
 import os
+import re
 # -*- coding: utf-8 -*-
 """主人指挥系统: 以指令直接调度bot(仅主人可用)
 /群列表                    — 查看bot所在的群
@@ -174,6 +175,26 @@ class TwinMaster(Star):
             system_prompt="你是群日报小编, 输出轻快有梗的中文日报。")
         text = (getattr(resp, "completion_text", "") or "").strip() or "日报生成失败"
         await event.send(MessageChain(chain=[Plain(text[:1200])]))
+
+    # ---------- /生日 ----------
+    @filter.command("生日")
+    async def cmd_birthday(self, event: AstrMessageEvent, qq: int, date: str, *, name: str = ""):
+        """/生日 <QQ号> <MM-DD> [称呼] — 登记, 当天早上bot主动送祝福"""
+        if not self._is_master(event):
+            await self._deny(event); return
+        event.stop_event()
+        if not re.match(r"^\d{2}-\d{2}$", date):
+            await event.send(MessageChain(chain=[Plain("日期格式: MM-DD, 例如 03-15")]))
+            return
+        fp = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "birthdays.json"))
+        try:
+            d = json.load(open(fp, encoding="utf-8"))
+        except Exception:
+            d = {}
+        d[str(qq)] = {"date": date, "name": name.strip() or str(qq)}
+        json.dump(d, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        _audit("生日", f"qq={qq} {date} {name}")
+        await event.send(MessageChain(chain=[Plain(f"已登记: {name or qq}({qq}) 生日 {date}, 当天早上会收到祝福")]))
 
     # ---------- /发言 ----------
     @filter.command("发言")

@@ -6,6 +6,8 @@ import re
 import time
 from collections import deque, defaultdict
 
+import requests
+
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.message_components import Plain, Image, Reply
@@ -26,6 +28,8 @@ REACTION_DELAY = (2.0, 6.0)
 SCORE_CAP_H = 20           # 激活度打分每小时上限(控成本)
 SCORE_TH = 6               # 激活度>=此分才组织回复
 IMP_EVERY = 220            # 每累计多少条群消息做一次群印象总结
+IMG_CHANCE = 0.05          # 纯图消息吐槽概率(VLM有成本, 压低)
+IMG_CAP_H = 6              # VLM识图每小时上限
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), "group_prompt.txt")
 EMOJI_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "emojis"))
@@ -49,6 +53,8 @@ class WuzihangGroupPlugin(Star):
         self.raw_log = defaultdict(list)      # 群印象累计原始日志(内存)
         self._summing = set()                 # 正在做群印象的群
         self._score_times = []                # 激活度打分时间戳(小时窗)
+        self._vlm_times = []                  # VLM识图时间戳(小时窗)
+        self._vlm_key = None                  # GLM key(懒加载自cmd_config)
         try:
             self.prompt = open(PROMPT_FILE, encoding="utf-8").read()
         except Exception:
@@ -203,6 +209,101 @@ class WuzihangGroupPlugin(Star):
                 parts.append(Image.fromFileSystem(img))
         return parts
 
+    # ---------- 群聊图片吐槽(VLM识图+低概率) ----------
+    def _glm_key(self):
+        if self._vlm_key:
+            return self._vlm_key
+        try:
+            def find_key(o):
+                if isinstance(o, str) and re.match(r"^[0-9a-f]{32}\.[A-Za-z0-9]{8,}$", o):
+                    return o
+                if isinstance(o, dict):
+                    for v in o.values():
+                        r = find_key(v)
+                        if r:
+                            return r
+                if isinstance(o, list):
+                    for v in o:
+                        r = find_key(v)
+                        if r:
+                            return r
+            import json as _json
+            fp = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "cmd_config.json"))
+            self._vlm_key = find_key(_json.load(open(fp, encoding="utf-8"))) or ""
+        except Exception:
+            self._vlm_key = ""
+        return self._vlm_key
+
+    def _vlm_caption(self, img_bytes) -> str:
+        """GLM-4V-Flash识图(免费模型, 不占聊天额度), 失败返回空"""
+        key = self._glm_key()
+        if not key:
+            return ""
+        try:
+            import base64
+            b64 = base64.b64encode(img_bytes).decode()
+            r = requests.post(
+                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                headers={"Authorization": "Bearer " + key}, timeout=40,
+                json={"model": "glm-4v-flash",
+                      "messages": [{"role": "user", "content": [
+                          {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}},
+                          {"type": "text", "text": "用40字内描述这张图的内容和笑点/亮点"}]}]})
+            return (r.json()["choices"][0]["message"]["content"] or "").strip()[:80]
+        except Exception:
+            return ""
+
+    async def _react_image(self, event, gid, url):
+        """看到群里的图, 偶尔吐槽一句"""
+        now = time.time()
+        self._vlm_times = [t for t in self._vlm_times if now - t < 3600]
+        if len(self._vlm_times) >= IMG_CAP_H:
+            return
+        await asyncio.sleep(random.uniform(3.0, 8.0))
+
+        def _dl():
+            return requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}).content
+        try:
+            img = await asyncio.get_event_loop().run_in_executor(None, _dl)
+        except Exception:
+            return
+        if not img or len(img) < 2000:
+            return
+        self._vlm_times.append(time.time())
+        cap = await asyncio.get_event_loop().run_in_executor(None, lambda: self._vlm_caption(img))
+        if not cap:
+            return
+        provider = self.context.get_using_provider()
+        if provider is None:
+            return
+        sys_prompt = (self.prompt or "你是一个QQ群里的闲聊分身。") + \
+            f"\n[当前状态] " + self._read_sched() + "\n" + self._impress_text(gid)
+        try:
+            resp = await provider.text_chat(
+                prompt="群友在群里发了一张图, 图的内容: " + cap + "\n"
+                       "你看到了, 随口吐槽/评论一句(15字内, 接地气, 像刷群时看到的反应)。没意思就只输出 [SKIP]",
+                system_prompt=sys_prompt)
+            reply = (getattr(resp, "completion_text", "") or "").strip()
+            if not reply or "[SKIP]" in reply:
+                return
+            self.last_speak[gid] = time.time()
+            self.today_count += 1
+            tid = str(getattr(event.message_obj, "message_id", "") or "")
+            parts = self._build_chain(reply)
+            if tid:
+                parts = [Reply(id=tid)] + parts
+            if parts:
+                await event.send(MessageChain(chain=parts))
+                print(f"[group] 图片吐槽: {cap[:30]} -> {reply[:30]}")
+        except Exception:
+            pass
+
+    def _read_sched(self) -> str:
+        try:
+            return open(SCHED_NOW, encoding="utf-8").read().strip() or "闲着"
+        except Exception:
+            return "闲着"
+
     # ---------- 群消息监听 ----------
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
     async def on_group_message(self, event: AstrMessageEvent, *args, **kwargs):
@@ -227,10 +328,23 @@ class WuzihangGroupPlugin(Star):
 
             # @自己的消息由主管道处理, 围观插件让路 (否则会双发)
             self_id = str((getattr(event, "get_self_id", lambda: "")() or ""))
+            img_urls = []
             for comp in event.message_obj.message:
                 qq = str(getattr(comp, "qq", "") or "")
                 if type(comp).__name__ == "At" and qq in (BOT_UIN, self_id):
                     return
+                if type(comp).__name__ == "Image":
+                    u = getattr(comp, "url", None) or ""
+                    if u:
+                        img_urls.append(u)
+
+            # 纯图消息: 低概率VLM吐槽(独立小通道, 不占文字插话额度判定)
+            if img_urls and not text:
+                if self._quota_ok() and not self._silent_now() \
+                        and time.time() - self.last_speak.get(gid, 0) >= GROUP_COOLDOWN \
+                        and random.random() < IMG_CHANCE:
+                    asyncio.create_task(self._react_image(event, gid, img_urls[0]))
+                return
 
             # 同群同内容90秒去重保险
             last = self.last_reply.get(gid)

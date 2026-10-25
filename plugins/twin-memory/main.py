@@ -225,16 +225,61 @@ class TwinMemory(Star):
         finally:
             self._cons_pending.discard(key)
 
-    # ---------- 主动引擎: 提醒 + 到期跟进 + 日程联动主动关怀 ----------
+    # ---------- 主动引擎: 提醒 + 到期跟进 + 日程联动主动关怀 + 生日祝福 ----------
     async def _proactive_loop(self):
         await asyncio.sleep(15)                   # 等框架起完
         while True:
             try:
                 await self._fire_due()
                 await self._care_tick()
+                await self._birthday_tick()
             except Exception:
                 pass
             await asyncio.sleep(30)
+
+    async def _birthday_tick(self):
+        """早上9~12点给当天生日的好友送祝福(每人每年一次)"""
+        lt = datetime.now()
+        if not (9 <= lt.hour < 12):
+            return
+        if self._bot is None:
+            return
+        bfp = os.path.join(DATA_DIR, "birthdays.json")
+        birs = self._load(bfp, {})
+        today = lt.strftime("%m-%d")
+        for qq, info in list(birs.items()):
+            if info.get("date") != today:
+                continue
+            if str(info.get("last_year", "")) == lt.strftime("%Y"):
+                continue
+            msg = await self._birthday_msg(info.get("name", qq))
+            try:
+                await self._bot.call_action("send_private_msg",
+                                            {"user_id": int(qq),
+                                             "message": [{"type": "text", "data": {"text": msg}}]})
+                self._log_proactive("private", qq, msg)
+                print(f"[twin_memory] 生日祝福已发送 -> {qq}")
+            except Exception:
+                pass                          # 发送失败明天不再重试(避免连发), 标记已发
+            info["last_year"] = lt.strftime("%Y")
+            json.dump(birs, open(bfp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+    async def _birthday_msg(self, name) -> str:
+        try:
+            provider = self.context.get_using_provider()
+            if provider is None:
+                raise RuntimeError("no provider")
+            r = await provider.text_chat(
+                prompt=f"今天是你朋友{name}的生日, 你要给TA发一条QQ生日祝福:\n"
+                       "- 25字内, 口语, 像大学女生随手发的(不是贺卡腔)\n"
+                       "- 可以调侃可以真诚, 别用emoji堆砌, 别说'生日快乐'四个字开头\n只输出祝福本身。",
+                system_prompt="你是电子科大女生Yuan, 只输出一条QQ消息。")
+            out = (getattr(r, "completion_text", "") or "").strip().strip('"「」')
+            if out and len(out) <= 60:
+                return out
+        except Exception:
+            pass
+        return f"生日快乐呀{name}, 又老一岁了哈哈"
 
     def _masters(self):
         try:
