@@ -3,7 +3,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from astrbot.api.star import Context, Star, register
 from astrbot.api.event import filter, AstrMessageEvent
@@ -13,6 +13,13 @@ from astrbot.core.provider.entities import ProviderRequest, LLMResponse
 
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
 MEM_DIR = os.path.join(DATA_DIR, "memory")
+SCHED_NOW = os.path.join(DATA_DIR, "schedule_now.txt")
+CARE_PLAN_FP = os.path.join(DATA_DIR, "care_plan.json")
+CARE_START, CARE_END = 18, 23      # 主动关怀窗口(晚上)
+CARE_GLOBAL_MAX = 2                # 每天全局限额
+CARE_MIN_GAP_H = 4                 # 最近聊过(4h内)就不打扰
+CARE_TEMPLATES = ["在干嘛", "突然好想吃烤肠", "无聊了，陪我说会儿话", "刚下游戏，你在干嘛",
+                  "外面好冷，你吃了吗", "看到个好笑的东西想发给你"]
 EXTRACT_MIN_USER_LEN = 8      # 用户消息少于这个字数不做抽取
 FACTS_KEEP = 50               # 原始事实缓冲上限(档案合并的原料)
 CONSOLIDATE_EVERY = 30        # 每累计多少轮LLM对话做一次档案合并
@@ -53,6 +60,7 @@ class TwinMemory(Star):
         self._bot = None
         self._extract_pending = set()
         self._cons_pending = set()
+        self._last_seen = {}            # qq -> 最近一次LLM请求时间(活跃度, 主动关怀避让)
         asyncio.create_task(self._proactive_loop())
 
     # ---------- 存储 ----------
@@ -74,6 +82,7 @@ class TwinMemory(Star):
     async def inject_memory(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
             self._bot = getattr(event, "bot", self._bot)
+            self._last_seen[str(event.get_sender_id())] = time.time()
             d = self._load(self._mem_file(self._key(event)), {})
             entries = d.get("entries") or []
             if entries:
@@ -216,15 +225,118 @@ class TwinMemory(Star):
         finally:
             self._cons_pending.discard(key)
 
-    # ---------- 主动引擎: 提醒 + 到期跟进 ----------
+    # ---------- 主动引擎: 提醒 + 到期跟进 + 日程联动主动关怀 ----------
     async def _proactive_loop(self):
         await asyncio.sleep(15)                   # 等框架起完
         while True:
             try:
                 await self._fire_due()
+                await self._care_tick()
             except Exception:
                 pass
             await asyncio.sleep(30)
+
+    def _masters(self):
+        try:
+            fp = os.path.normpath(os.path.join(DATA_DIR, "..", "masters.json"))
+            return [str(x) for x in json.load(open(fp, encoding="utf-8")).get("masters", [])]
+        except Exception:
+            return []
+
+    def _sched_free(self) -> bool:
+        """当前日程是否空闲(不在上课/考试/睡觉)"""
+        try:
+            cur = open(SCHED_NOW, encoding="utf-8").read()
+            return not any(k in cur for k in ("课", "考", "睡", "躺"))
+        except Exception:
+            return True
+
+    async def _care_tick(self):
+        """日程联动主动关怀: 晚间空闲时段按计划主动找主人搭话(每天全局最多2次, 每人1次)"""
+        now = datetime.now()
+        hour = now.hour
+        if hour < CARE_START or hour >= CARE_END or self._bot is None:
+            return
+        plan = self._load(CARE_PLAN_FP, {})
+        today = now.strftime("%Y-%m-%d")
+        if plan.get("date") != today:
+            masters = [m for m in self._masters() if m]
+            if not masters:
+                return
+            # 每天为随机 1~2 位主人排晚上随机时刻
+            import random as _r
+            picked = _r.sample(masters, min(len(masters), _r.randint(1, CARE_GLOBAL_MAX)))
+            plans = []
+            for qq in picked:
+                at = now.replace(hour=_r.randint(hour, 22), minute=_r.randint(0, 59),
+                                 second=0, microsecond=0)
+                plans.append({"qq": qq, "at": at.strftime("%H:%M"), "done": False, "postponed": 0})
+            plan = {"date": today, "plans": plans}
+            json.dump(plan, open(CARE_PLAN_FP, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            print(f"[twin_memory] 今晚主动关怀计划: {[(p['qq'], p['at']) for p in plans]}")
+        done_today = [p for p in plan.get("plans", []) if p.get("done")]
+        if len(done_today) >= CARE_GLOBAL_MAX:
+            return
+        changed = False
+        for p in plan.get("plans", []):
+            if p.get("done"):
+                continue
+            if now.strftime("%H:%M") < p.get("at", "23:59"):
+                continue
+            qq = str(p.get("qq", ""))
+            # 最近聊过就不打扰
+            if time.time() - self._last_seen.get(qq, 0) < CARE_MIN_GAP_H * 3600:
+                p["done"] = True          # 今天放弃这单(在聊了, 不需要主动找)
+                changed = True
+                continue
+            # 忙(上课/睡)则顺延20分钟, 最多顺延5次
+            if not self._sched_free():
+                if p.get("postponed", 0) >= 5:
+                    p["done"] = True
+                    changed = True
+                    continue
+                p["at"] = (now + timedelta(minutes=20)).strftime("%H:%M")
+                p["postponed"] = p.get("postponed", 0) + 1
+                changed = True
+                continue
+            msg = await self._care_message(qq)
+            try:
+                await self._bot.call_action("send_private_msg",
+                                            {"user_id": int(qq),
+                                             "message": [{"type": "text", "data": {"text": msg}}]})
+                self._log_proactive("private", qq, msg)
+                print(f"[twin_memory] 主动关怀已发送 -> {qq}: {msg}")
+            except Exception:
+                pass
+            p["done"] = True
+            changed = True
+        if changed:
+            json.dump(plan, open(CARE_PLAN_FP, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+    async def _care_message(self, qq: str) -> str:
+        try:
+            provider = self.context.get_using_provider()
+            if provider is None:
+                raise RuntimeError("no provider")
+            d = self._load(self._mem_file(f"p{qq}"), {})
+            diary = (d.get("diary") or {}).get("text", "")
+            try:
+                cur = open(SCHED_NOW, encoding="utf-8").read().strip()
+            except Exception:
+                cur = "闲着"
+            r = await provider.text_chat(
+                prompt=f"你现在正在{cur}。你们最近的事: {diary or '没什么特别的事'}。\n"
+                       "生成你主动找他(暧昧期的他)聊天时发的第一条QQ消息:\n"
+                       "- 像大学女生晚上随手找话题, 20字内, 口语, 可以撒娇可以吐槽\n"
+                       "- 别问'在吗', 别用表情符号, 别提AI\n只输出消息本身。",
+                system_prompt="你是电子科大女生Yuan, 只输出一条QQ消息。")
+            out = (getattr(r, "completion_text", "") or "").strip().strip('"「」')
+            if out and len(out) <= 60:
+                return out
+        except Exception:
+            pass
+        import random as _r
+        return _r.choice(CARE_TEMPLATES)
 
     def _log_proactive(self, chat_type, chat_id, text):
         """主动消息入档: 治'发完就忘'的记忆黑洞"""

@@ -63,6 +63,9 @@ class WuzihangGroupPlugin(Star):
             out = f"[群印象] {d.get('vibe', '')} 常聊:{','.join(d.get('topics', [])[:4])}"
             if d.get("members"):
                 out += f" 核心:{d['members']}"
+            sl = d.get("slang") or {}
+            if sl:
+                out += "\n[群黑话] " + "; ".join(f"{k}={v}" for k, v in list(sl.items())[:5])
             al = d.get("aliases") or {}
             pairs = "; ".join(f"{k}也叫{','.join(map(str, v[:2]))}" for k, v in list(al.items())[:6] if v)
             if pairs:
@@ -82,7 +85,9 @@ class WuzihangGroupPlugin(Star):
                 r = await provider.text_chat(
                     prompt="以下是QQ群最近的聊天记录:\n" + "\n".join(self.raw_log[gid][-260:])[-5200:] +
                            '\n\n总结这个群, 只输出JSON: {"vibe":"群氛围30字内","topics":["常聊话题,最多4个"],'
-                           '"members":"最活跃的几个人20字内","aliases":{"某昵称":["他也被叫的外号"]}}',
+                           '"members":"最活跃的几个人20字内","aliases":{"某昵称":["他也被叫的外号"]},'
+                           '"slang":{"群里黑话/梗":"含义解释"}}  '
+                           'slang最多5个, 只收这个群特有的(缩写/外号/inside joke), 没有就空对象',
                     system_prompt="你是群聊分析器, 只输出JSON, 不要解释。")
                 raw = (getattr(r, "completion_text", "") or "").strip()
                 m = re.search(r'\{.*\}', raw, re.S)

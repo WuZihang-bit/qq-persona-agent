@@ -24,6 +24,7 @@ except Exception:
     fs_protocol = None
 
 EMOJI_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "emojis"))
+SCHED_NOW = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "schedule_now.txt"))
 EMOJI_TAG = re.compile(r"\[\[EMOJI:([^\]]+)\]\]")
 QUOTE_NUM = re.compile(r"\[+\s*QUOTE\s*[:：]\s*(\d+)\s*\]+", re.IGNORECASE)
 QUOTE_TAG = re.compile(r"\[++\s*QUOTE\s*[:：][^\]]*\]+", re.IGNORECASE)
@@ -78,6 +79,22 @@ class WuzihangDelayPlugin(Star):
         if hour >= 23 or hour <= 7:
             return min(d * 1.7, 20.0)
         return min(d, 12.0)
+
+    def _sched_delay(self) -> float:
+        """日程联动打字延迟: 上课回得慢(像偷看手机), 空闲正常"""
+        try:
+            cur = open(SCHED_NOW, encoding="utf-8").read()
+        except Exception:
+            cur = ""
+        if random.random() < 0.18:            # 正好在看手机, 秒级
+            return random.uniform(1.5, 4.0)
+        if any(k in cur for k in ("课", "考试")):
+            return random.uniform(16.0, 45.0)
+        if any(k in cur for k in ("图书馆", "作业", "自习", "赶")):
+            return random.uniform(9.0, 26.0)
+        if any(k in cur for k in ("睡", "躺")):
+            return random.uniform(14.0, 38.0)
+        return random.uniform(2.5, 9.0)
 
     # ---------- 表情包检索 ----------
     def _find_sticker(self, kw: str) -> str | None:
@@ -157,6 +174,13 @@ class WuzihangDelayPlugin(Star):
             segs = expanded[:5]
         has_emoji = any(EMOJI_TAG.search(s) for s in segs)
         is_private = not in_group
+
+        # 日程联动打字延迟(上课慢回/空闲快回), 在进发送队列前真实地"想一会儿"
+        try:
+            await asyncio.sleep(self._sched_delay())
+        except Exception:
+            pass
+
         token = await _acquire_token()                 # 进入发送队列(保序)
         session = f"{event.get_group_id() or event.get_sender_id()}"
 

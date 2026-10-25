@@ -108,3 +108,9 @@ git add -A && git commit -m "xxx" && git push
 - NapCat WebUI 状态探测：sha256(token+".napcat") 换 Credential → CheckLoginStatus
 
 **踩坑**：人格真身在 SQLite `data_v4.db` personas 表（data/persona/*.txt 是旧副本）；qzone 插件 publish_cron 在 `trigger.` 嵌套下；服务器连不上 GitHub（插件走本机中转 tar 上传）
+
+## 十、v0.4.1 增量（2026-10-25 晚）
+
+- **日程联动打字延迟**：delay 插件真实应用延迟（原 _delay_for 未接线）——上课/考试 16~45s、赶作业 9~26s、躺床 14~38s、空闲 2.5~9s，另有 18% 概率"正好在看手机"秒回
+- **黑话自动挖掘**：群印象总结新增 slang 字段（群特有缩写/梗/inside joke ≤5 条），随 [群黑话] 注入群聊上下文
+- **主动关怀引擎**：twin_memory 每晚 18~23 点按日程在空闲时段主动找主人搭话（每天全局≤2 次、每人≤1 次、4h 内聊过则不打扰、LLM 结合日程+日记生成开场白，失败回落模板池）；发出后自动入主动记忆
