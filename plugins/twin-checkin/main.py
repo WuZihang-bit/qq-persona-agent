@@ -61,7 +61,18 @@ def _read_affinity(qq):
         return None
 
 
-@register("twin_checkin", "wuzihang", "签到/好感度游戏化+群早晚安", "1.0.0")
+def _masters():
+    try:
+        fp = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "masters.json"))
+        return [str(x) for x in json.load(open(fp, encoding="utf-8")).get("masters", [])
+                if str(x).isdigit()]
+    except Exception:
+        import os as _os
+        m = _os.environ.get("MASTER_QQ", "")
+        return [m] if m.isdigit() else []
+
+
+@register("twin_checkin", "wuzihang", "签到/好感度游戏化+好感度管理", "1.1.0")
 class TwinCheckin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
@@ -136,6 +147,36 @@ class TwinCheckin(Star):
             txt += "\n好感度排行:\n" + "\n".join(
                 f"{i+1}. {n} — {a}" for i, (n, a) in enumerate(rank[:5]))
         await event.send(MessageChain(chain=[Plain(txt)]))
+
+    # ---------- /好感度设置 (仅主人) ----------
+    @filter.command("好感度设置")
+    async def cmd_set_affinity(self, event: AstrMessageEvent, qq: str = "", val: str = ""):
+        """/好感度设置 <QQ号> <数值|+增量|-增量> — 主人直接改情感引擎好感度"""
+        if str(event.get_sender_id()) not in _masters():
+            event.stop_event()
+            await event.send(MessageChain(chain=[Plain("这个指令只有主人能用")]))
+            return
+        event.stop_event()
+        if not qq.isdigit() or not re.match(r"^[+-]?\d+(\.\d+)?$", val):
+            await event.send(MessageChain(chain=[Plain(
+                "格式: /好感度设置 QQ号 数值   例: /好感度设置 123456 80 或 /好感度设置 123456 +10")]))
+            return
+        fp = os.path.join(FRIEND_DIR, f"{qq}.json")
+        try:
+            d = json.load(open(fp, encoding="utf-8"))
+        except Exception:
+            d = {"name": qq, "facts": [], "open_loops": [], "last_chat": "",
+                 "last_emotion": "平静", "sad_streak": 0, "birthday": None}
+        before = round(float(d.get("affinity", 0)))
+        if val.startswith(("+", "-")):
+            after = max(0.0, before + float(val))
+        else:
+            after = max(0.0, float(val))
+        d["affinity"] = after
+        d.setdefault("name", qq)
+        json.dump(d, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        await event.send(MessageChain(chain=[Plain(
+            f"{qq} 好感度: {before} → {round(after)} [{_tier(after)}]")]))
 
     # ---------- 被动: 群早晚安(当前关闭) ----------
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
