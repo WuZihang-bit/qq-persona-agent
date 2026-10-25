@@ -27,11 +27,43 @@ from astrbot.core.provider.entities import ProviderRequest
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
 IMG_DIR = os.path.join(DATA_DIR, "img_mem")
 IDX_FP = os.path.join(DATA_DIR, "img_memory.json")
+MEME_FP = os.path.join(DATA_DIR, "meme_knowledge.json")
 DAILY_CAP = 40
 GROUP_SAMPLE = 0.25
 KEEP_FILES = 200          # 图片文件LRU上限
 
 VLM_URL = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+
+
+def _char_hints() -> str:
+    """知识库里的形象词条, 给VLM当识别提示"""
+    try:
+        d = json.load(open(MEME_FP, encoding="utf-8"))
+        chars = [f"{k}({v[1][:18]})" for k, v in d.items() if v[0] == "形象"][:20]
+        return "; ".join(chars)
+    except Exception:
+        return ""
+
+
+def _tavily_key():
+    try:
+        def fk(o):
+            if isinstance(o, str) and re.match(r"^tvly-[A-Za-z0-9_\-]{10,}$", o):
+                return o
+            if isinstance(o, dict):
+                for v in o.values():
+                    r = fk(v)
+                    if r:
+                        return r
+            if isinstance(o, list):
+                for v in o:
+                    r = fk(v)
+                    if r:
+                        return r
+        return fk(json.load(open(os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "..", "cmd_config.json")), encoding="utf-8"))) or ""
+    except Exception:
+        return ""
 
 
 def _load():
@@ -148,15 +180,20 @@ class TwinImgMemory(Star):
         self._n += 1
         print(f"[imgmem] 记住了: {cap[:40]} ({chat_key})")
 
-    def _vlm(self, key, img):
+    def _vlm(self, key, img, extra_hint=True):
         try:
+            hint = ""
+            if extra_hint:
+                ch = _char_hints()
+                if ch:
+                    hint = f" 常见形象参考: {ch}."
             b64 = base64.b64encode(img).decode()
             r = requests.post(VLM_URL, headers={"Authorization": "Bearer " + key}, timeout=40,
                               json={"model": "glm-4v-flash",
                                     "messages": [{"role": "user", "content": [
                                         {"type": "image_url", "image_url": {
                                             "url": "data:image/jpeg;base64," + b64}},
-                                        {"type": "text", "text": "40字内描述这张图(内容+亮点), 口语"}]}]})
+                                        {"type": "text", "text": "40字内描述这张图(内容+亮点), 若有知名形象/IP角色要说出名字。" + hint}]}]})
             return (r.json()["choices"][0]["message"]["content"] or "").strip()
         except Exception:
             return ""
@@ -183,6 +220,95 @@ class TwinImgMemory(Star):
                     "\n[TA最近发过的图(你能想起来)]\n" + "\n".join(lines)
         except Exception:
             pass
+
+    # ---------- /这是谁 (回复一张图, 联网识别形象) ----------
+    @filter.command("这是谁")
+    async def cmd_whois(self, event: AstrMessageEvent):
+        """/这是谁 — 回复一张图片, bot识别图里的形象; 本地不认识就联网搜索"""
+        event.stop_event()
+        bot = getattr(event, "bot", None)
+        url = None
+        for comp in event.message_obj.message:
+            if type(comp).__name__ == "Image" and getattr(comp, "url", ""):
+                url = comp.url
+                break
+        if url is None:
+            # 取被回复消息里的图
+            for comp in event.message_obj.message:
+                if type(comp).__name__ == "Reply":
+                    try:
+                        src = await bot.call_action("get_msg", {"message_id": int(getattr(comp, "id", 0))})
+                        for seg in (src.get("message") or []):
+                            u = seg.get("data", {}).get("url") if isinstance(seg, dict) else None
+                            if u:
+                                url = u
+                                break
+                    except Exception:
+                        pass
+        if url is None:
+            await event.send(MessageChain(chain=[Plain("/这是谁 — 直接带图发, 或回复一张图片")]))
+            return
+        await event.send(MessageChain(chain=[Plain("让我看看这是谁..")]))
+        key = self._glm_key()
+        if not key:
+            await event.send(MessageChain(chain=[Plain("VLM没配置, 识别不了")]))
+            return
+
+        def _dl():
+            return requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}).content
+        try:
+            img = await asyncio.get_event_loop().run_in_executor(None, _dl)
+        except Exception:
+            await event.send(MessageChain(chain=[Plain("图下载失败")]))
+            return
+        cap = await asyncio.get_event_loop().run_in_executor(None, lambda: self._vlm(key, img))
+        if not cap:
+            await event.send(MessageChain(chain=[Plain("看不清这张图")]))
+            return
+        # 本地词典先查
+        try:
+            memes = json.load(open(MEME_FP, encoding="utf-8"))
+            local = [f"{k}: {v[1]}" for k, v in memes.items() if v[0] == "形象" and k in cap]
+            if local:
+                await event.send(MessageChain(chain=[Plain(
+                    "认识! " + "; ".join(local[:3]) + f"\n(看图: {cap})")]))
+                return
+        except Exception:
+            pass
+        # 联网搜
+        tav = _tavily_key()
+        if tav:
+            try:
+                def _q():
+                    return requests.post("https://api.tavily.com/search", timeout=25, json={
+                        "api_key": tav, "query": f"{cap[:60]} 是什么 角色 形象 表情包",
+                        "max_results": 5}).json()
+                r = await asyncio.get_event_loop().run_in_executor(None, _q)
+                snips = "\n".join(x.get("content", "")[:150] for x in r.get("results", []))
+                provider = self.context.get_using_provider()
+                if snips and provider is not None:
+                    resp = await provider.text_chat(
+                        prompt=f"图里是: {cap}\n搜索结果:\n{snips[:2000]}\n"
+                               "判断图里的形象/IP叫什么、是什么。50字内。没把握就说'没查到,我看像个XX'。",
+                        system_prompt="你是形象识别员, 直接给结论。")
+                    out = (getattr(resp, "completion_text", "") or "").strip()
+                    if out:
+                        if "没查到" not in out:
+                            # 学到新形象: 从回答里抠名字入词典
+                            try:
+                                nm = re.match(r"^[^,，。:：]{2,8}", out).group().strip()
+                                memes = json.load(open(MEME_FP, encoding="utf-8"))
+                                memes[nm] = ["形象", out[:90]]
+                                json.dump(memes, open(MEME_FP, "w", encoding="utf-8"),
+                                          ensure_ascii=False, indent=1)
+                            except Exception:
+                                pass
+                        await event.send(MessageChain(chain=[Plain(
+                            f"查到了: {out}\n(看图: {cap})")]))
+                        return
+            except Exception:
+                pass
+        await event.send(MessageChain(chain=[Plain(f"没搜到确切信息, 我自己看: {cap}")]))
 
     # ---------- /想起 ----------
     @filter.command("想起")
