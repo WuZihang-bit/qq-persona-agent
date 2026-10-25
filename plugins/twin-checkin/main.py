@@ -21,6 +21,7 @@ DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", 
 CK_FP = os.path.join(DATA_DIR, "checkin.json")
 SCHED_NOW = os.path.join(DATA_DIR, "schedule_now.txt")
 FRIEND_DIR = os.path.join(DATA_DIR, "friends")
+ENABLE_GREET = False          # 群早晚安被动(用户要求先关, 改True恢复)
 
 TIERS = [("陌生", 0), ("眼熟", 15), ("熟人", 40), ("好朋友", 80), ("挚友", 150), ("很重要的人", 300)]
 
@@ -136,9 +137,11 @@ class TwinCheckin(Star):
                 f"{i+1}. {n} — {a}" for i, (n, a) in enumerate(rank[:5]))
         await event.send(MessageChain(chain=[Plain(txt)]))
 
-    # ---------- 被动: 群早晚安 ----------
+    # ---------- 被动: 群早晚安(当前关闭) ----------
     @filter.event_message_type(EventMessageType.GROUP_MESSAGE)
     async def on_group(self, event: AstrMessageEvent, *args, **kwargs):
+        if not ENABLE_GREET:
+            return
         try:
             gid = event.get_group_id()
             text = (event.message_str or "").strip()
