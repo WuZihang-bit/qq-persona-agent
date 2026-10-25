@@ -14,7 +14,10 @@ from astrbot.core.provider.entities import ProviderRequest, LLMResponse
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
 MEM_DIR = os.path.join(DATA_DIR, "memory")
 EXTRACT_MIN_USER_LEN = 8      # 用户消息少于这个字数不做抽取
-FACTS_KEEP = 50               # 每个联系人最多记忆条数
+FACTS_KEEP = 50               # 原始事实缓冲上限(档案合并的原料)
+CONSOLIDATE_EVERY = 30        # 每累计多少轮LLM对话做一次档案合并
+ENTRIES_KEEP = 30             # 合并后档案条目上限
+ENTRIES_INJECT = 8            # 注入条数
 
 EXTRACT_PROMPT = '''从下面这轮对话中提取值得长期记住的信息。只输出JSON：
 {"facts": ["事实1", "事实2"], "followup": {"topic": "主题", "due": "YYYY-MM-DD"} 或 null}
@@ -23,16 +26,33 @@ EXTRACT_PROMPT = '''从下面这轮对话中提取值得长期记住的信息。
 - followup: 对方提到未来某天有结果的事(考试/面试/比赛), 才登记; 没有则null
 - 不要记寒暄、玩笑、一次性话题'''
 
+CONSOL_PROMPT = '''你是记忆档案管理员, 只输出JSON。
+
+[现有档案条目]
+{entries}
+
+[新积累的事实原料]
+{facts}
+
+把两者合并成更新后的档案(最多{cap}条), 规则:
+- 每条标类型: impression(TA是什么人/性格/偏好/身份) | event(TA发生的事/计划/进展) | relation(TA和其他人的关系)
+- 合并重复(同一事实只留一条,表述更完整的版本), 修正过时信息, 新事实加入
+- 淘汰: 一次性琐事/超过一个月的过期细节; 身份/偏好/关系类长期保留
+- 重要的排前面
+另外基于最近的事实写一句"最近聊天日记"(40字内, 叙事体)。
+输出: {{"entries": [{{"type": "impression", "text": "..."}}], "diary": "..."}}'''
+
 FETCH_SYSTEM = "你是信息抽取器, 只输出JSON, 不要解释。"
 
 
-@register("twin_memory", "your-name", "长期记忆 + 主动引擎(提醒/跟进)", "1.0.0")
+@register("twin_memory", "your-name", "长期记忆v2(档案合并/聊天日记/主动记忆) + 主动引擎", "2.0.0")
 class TwinMemory(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         os.makedirs(MEM_DIR, exist_ok=True)
         self._bot = None
         self._extract_pending = set()
+        self._cons_pending = set()
         asyncio.create_task(self._proactive_loop())
 
     # ---------- 存储 ----------
@@ -54,11 +74,46 @@ class TwinMemory(Star):
     async def inject_memory(self, event: AstrMessageEvent, req: ProviderRequest):
         try:
             self._bot = getattr(event, "bot", self._bot)
-            d = self._load(self._mem_file(self._key(event)), {"facts": []})
-            facts = [f.get("text", "") for f in d.get("facts", [])][-10:]
-            if facts:
+            d = self._load(self._mem_file(self._key(event)), {})
+            entries = d.get("entries") or []
+            if entries:
+                lines = []
+                for e in entries[:ENTRIES_INJECT]:
+                    tag = {"impression": "印象", "event": "事件", "relation": "关系"}.get(e.get("type"), "记")
+                    lines.append(f"- [{tag}] {e.get('text', '')}")
                 req.system_prompt = (req.system_prompt or "") + \
-                    "\n[你记得的关于对方的长期记忆]\n" + "\n".join(f"- {x}" for x in facts)
+                    "\n[你记得的关于对方的长期档案]\n" + "\n".join(lines)
+            else:
+                facts = [f.get("text", "") for f in d.get("facts", [])][-10:]
+                if facts:
+                    req.system_prompt = (req.system_prompt or "") + \
+                        "\n[你记得的关于对方的长期记忆]\n" + "\n".join(f"- {x}" for x in facts)
+            # 聊天日记(近两天才有意义)
+            diary = d.get("diary") or {}
+            if diary.get("date") in (datetime.now().strftime("%Y-%m-%d"),
+                                     (datetime.fromtimestamp(time.time() - 86400)).strftime("%Y-%m-%d")) \
+                    and diary.get("text"):
+                req.system_prompt = (req.system_prompt or "") + f"\n[最近] {diary['text']}"
+            # 主动消息记忆(治"忘记自己主动说过什么")
+            pro = d.get("proactive") or []
+            if pro:
+                pl = "; ".join(f"{p.get('t', '')[5:]}你主动说过「{p.get('text', '')[:30]}」" for p in pro[-3:])
+                req.system_prompt = (req.system_prompt or "") + f"\n[你发过的主动消息] {pl}"
+        except Exception:
+            pass
+        # 群印象注入(group插件总结的, 群聊主管线@消息时也能拿到群画像/称呼)
+        gid = event.get_group_id()
+        if not gid:
+            return
+        try:
+            imp = self._load(os.path.join(DATA_DIR, "group_impressions.json"), {}).get(str(gid))
+            if imp:
+                add = f"\n[群印象] {imp.get('vibe', '')} 常聊:{','.join(imp.get('topics', [])[:4])}"
+                al = imp.get("aliases") or {}
+                pairs = "; ".join(f"{k}也叫{','.join(map(str, v[:2]))}" for k, v in list(al.items())[:6] if v)
+                if pairs:
+                    add += f"\n[称呼] {pairs}"
+                req.system_prompt = (req.system_prompt or "") + add
         except Exception:
             pass
 
@@ -100,6 +155,8 @@ class TwinMemory(Star):
                     data["facts"].append({"text": f, "time": datetime.now().isoformat(timespec="seconds")})
             data["facts"] = data["facts"][-FACTS_KEEP:]
             changed = bool(new)
+            # LLM轮数计数 -> 每CONSOLIDATE_EVERY轮做一次档案合并
+            data["n_llm"] = int(data.get("n_llm", 0)) + 1
             fu = d.get("followup")
             if isinstance(fu, dict) and fu.get("topic") and fu.get("due"):
                 fp2 = os.path.join(DATA_DIR, "followups.json")
@@ -111,12 +168,53 @@ class TwinMemory(Star):
                                 "chat_id": cid, "fired": False})
                     changed = True
                 json.dump(lst, open(fp2, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
-            if changed:
-                json.dump(data, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            json.dump(data, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            if data["n_llm"] % CONSOLIDATE_EVERY == 0 and key not in self._cons_pending:
+                asyncio.create_task(self._consolidate(key))
         except Exception:
             pass
         finally:
             self._extract_pending.discard(key)
+
+    # ---------- 档案合并: facts原料 -> 结构化四类条目 + 聊天日记 ----------
+    async def _consolidate(self, key: str):
+        if key in self._cons_pending:
+            return
+        self._cons_pending.add(key)
+        try:
+            await asyncio.sleep(5)
+            provider = self.context.get_using_provider()
+            if provider is None:
+                return
+            fp = self._mem_file(key)
+            data = self._load(fp, {})
+            entries = data.get("entries") or []
+            facts = [f.get("text", "") for f in data.get("facts", []) if f.get("text")]
+            if len(facts) < 5:
+                return
+            ent_txt = "\n".join(f"- [{e.get('type', 'impression')}] {e.get('text', '')}" for e in entries) or "(空)"
+            r = await provider.text_chat(
+                prompt=CONSOL_PROMPT.format(entries=ent_txt, facts="\n".join(f"- {x}" for x in facts),
+                                            cap=ENTRIES_KEEP),
+                system_prompt=FETCH_SYSTEM)
+            raw = (getattr(r, "completion_text", "") or "").strip()
+            m = re.search(r'\{.*\}', raw, re.S)
+            if not m:
+                return
+            d = json.loads(m.group())
+            new_entries = [e for e in d.get("entries", [])
+                           if e.get("text") and e.get("type") in ("impression", "event", "relation")][:ENTRIES_KEEP]
+            if new_entries:
+                data["entries"] = new_entries
+                data["facts"] = data["facts"][-15:]      # 原料收缩, 避免无限增长
+            if d.get("diary"):
+                data["diary"] = {"date": datetime.now().strftime("%Y-%m-%d"), "text": str(d["diary"])[:80]}
+            json.dump(data, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            print(f"[twin_memory] {key} 档案已合并: {len(new_entries)}条, 日记已写")
+        except Exception as e:
+            print(f"[twin_memory] 合并失败(下轮再试): {e}")
+        finally:
+            self._cons_pending.discard(key)
 
     # ---------- 主动引擎: 提醒 + 到期跟进 ----------
     async def _proactive_loop(self):
@@ -128,9 +226,18 @@ class TwinMemory(Star):
                 pass
             await asyncio.sleep(30)
 
-    def _re(self):
-        import re
-        return re
+    def _log_proactive(self, chat_type, chat_id, text):
+        """主动消息入档: 治'发完就忘'的记忆黑洞"""
+        try:
+            key = f"g{chat_id}" if chat_type == "group" else f"p{chat_id}"
+            fp = self._mem_file(key)
+            d = self._load(fp, {})
+            d.setdefault("proactive", []).append(
+                {"t": datetime.now().strftime("%Y-%m-%d"), "text": text[:60]})
+            d["proactive"] = d["proactive"][-5:]
+            json.dump(d, open(fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        except Exception:
+            pass
 
     async def _fire_due(self):
         if self._bot is None:
@@ -150,6 +257,7 @@ class TwinMemory(Star):
                     tid = int(r["chat_id"])
                     await self._bot.call_action(fn, {"group_id" if r["chat_type"] == "group" else "user_id": tid,
                                                      "message": [{"type": "text", "data": {"text": f"提醒: {r['content']}"}}]})
+                    self._log_proactive(r["chat_type"], tid, f"提醒: {r['content']}")
                 except Exception:
                     r["done"] = False
             json.dump(rems, open(rfp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
@@ -165,8 +273,10 @@ class TwinMemory(Star):
                 try:
                     fn = "send_group_msg" if f["chat_type"] == "group" else "send_private_msg"
                     tid = int(f["chat_id"])
+                    msg = f"上次你提到「{f['topic']}」，后来怎么样了？"
                     await self._bot.call_action(fn, {"group_id" if f["chat_type"] == "group" else "user_id": tid,
-                                                     "message": [{"type": "text", "data": {"text": f"上次你提到「{f['topic']}」，后来怎么样了？"}}]})
+                                                     "message": [{"type": "text", "data": {"text": msg}}]})
+                    self._log_proactive(f["chat_type"], tid, msg)
                 except Exception:
                     f["fired"] = False
         if fired_any:

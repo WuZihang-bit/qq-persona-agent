@@ -13,25 +13,31 @@ from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 # ---- 可调参数 ----
-BOT_UIN = os.environ.get("TWIN_BOT_UIN", "")     # 小号(bot自己)的QQ号: 用于识别@消息
-MASTER_QQ = os.environ.get("TWIN_MASTER_UIN", "")   # 主人大号: 他的消息高优先级接话
+BOT_UIN = "3662430655"     # 小号(bot自己)的QQ号: 用于识别@消息
+MASTER_QQ = "1522727368"   # 主人大号: 他的消息高优先级接话
 MASTER_COOLDOWN = 45       # 主人发言的接话冷却(秒), 防止连刷屏
-CHANCE = 0.08              # 普通群消息触发插话意愿的概率
+CHANCE = 0.13              # 普通群消息roll进打分的概率(读空气评分会再过滤)
 GROUP_COOLDOWN = 480       # 普通插话: 同一群最小间隔(秒)
 DAILY_CAP = 40             # 每天插话总上限
 SILENT_START = (23, 30)    # 静默时段 23:30 ~ 8:00 (主人叫它除外)
 SILENT_END = (8, 0)
 WINDOW = 14                # 喂给LLM的最近消息条数
 REACTION_DELAY = (2.0, 6.0)
+SCORE_CAP_H = 20           # 激活度打分每小时上限(控成本)
+SCORE_TH = 6               # 激活度>=此分才组织回复
+IMP_EVERY = 220            # 每累计多少条群消息做一次群印象总结
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), "group_prompt.txt")
 EMOJI_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "emojis"))
+SCHED_NOW = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "schedule_now.txt"))
+IMP_FP = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "group_impressions.json"))
 EMOJI_TAG = re.compile(r"\[\[EMOJI:([^\]]+)\]\]")
 QUOTE_TAG = re.compile(r"\[++\s*QUOTE\s*[:：][^\]]*\]+", re.IGNORECASE)
+NAME_PAT = re.compile(r"yuan", re.IGNORECASE)   # 有人提bot名字: 高把握接话
 
 
-@register("group_lurker", "your-name", "群聊围观+主人发言捧场", "1.1.0")
-class GroupLurkerPlugin(Star):
+@register("astrbot_plugin_wuzihang_group", "wuzihang", "群聊围观+主人发言捧场", "1.1.0")
+class WuzihangGroupPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.windows = defaultdict(lambda: deque(maxlen=WINDOW))
@@ -40,10 +46,85 @@ class GroupLurkerPlugin(Star):
         self.today_count = 0
         self.last_reply = {}
         self.prompt = ""
+        self.raw_log = defaultdict(list)      # 群印象累计原始日志(内存)
+        self._summing = set()                 # 正在做群印象的群
+        self._score_times = []                # 激活度打分时间戳(小时窗)
         try:
             self.prompt = open(PROMPT_FILE, encoding="utf-8").read()
         except Exception:
             self.prompt = ""
+
+    # ---------- 群印象 ----------
+    def _impress_text(self, gid) -> str:
+        try:
+            d = json.load(open(IMP_FP, encoding="utf-8")).get(str(gid))
+            if not d:
+                return ""
+            out = f"[群印象] {d.get('vibe', '')} 常聊:{','.join(d.get('topics', [])[:4])}"
+            if d.get("members"):
+                out += f" 核心:{d['members']}"
+            al = d.get("aliases") or {}
+            pairs = "; ".join(f"{k}也叫{','.join(map(str, v[:2]))}" for k, v in list(al.items())[:6] if v)
+            if pairs:
+                out += f"\n[称呼] {pairs}"
+            return out
+        except Exception:
+            return ""
+
+    async def _summarize_group(self, gid):
+        """累计消息够量后总结群印象(氛围/话题/成员/别名), 存盘供所有插件注入"""
+        if gid in self._summing:
+            return
+        self._summing.add(gid)
+        try:
+            provider = self.context.get_using_provider()
+            if provider is not None and len(self.raw_log[gid]) >= 100:
+                r = await provider.text_chat(
+                    prompt="以下是QQ群最近的聊天记录:\n" + "\n".join(self.raw_log[gid][-260:])[-5200:] +
+                           '\n\n总结这个群, 只输出JSON: {"vibe":"群氛围30字内","topics":["常聊话题,最多4个"],'
+                           '"members":"最活跃的几个人20字内","aliases":{"某昵称":["他也被叫的外号"]}}',
+                    system_prompt="你是群聊分析器, 只输出JSON, 不要解释。")
+                raw = (getattr(r, "completion_text", "") or "").strip()
+                m = re.search(r'\{.*\}', raw, re.S)
+                if m:
+                    d = json.loads(m.group())
+                    d["updated"] = time.strftime("%Y-%m-%d")
+                    try:
+                        imp = json.load(open(IMP_FP, encoding="utf-8"))
+                    except Exception:
+                        imp = {}
+                    imp[str(gid)] = d
+                    json.dump(imp, open(IMP_FP, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+                    print(f"[group] 群{gid}印象已更新")
+        except Exception:
+            pass
+        finally:
+            self.raw_log[gid] = []
+            self._summing.discard(gid)
+
+    # ---------- 读空气: 激活度打分 ----------
+    async def _activation(self, gid):
+        """0-10 你此刻想插话的冲动; 失败/超限返回None走原逻辑(保证稳定)"""
+        try:
+            now = time.time()
+            self._score_times = [t for t in self._score_times if now - t < 3600]
+            if len(self._score_times) >= SCORE_CAP_H:
+                return None
+            provider = self.context.get_using_provider()
+            if provider is None:
+                return None
+            self._score_times.append(now)
+            r = await provider.text_chat(
+                prompt="你是QQ群里的群友Yuan(电子科大信软大一女生,爱打王者主玩弈星,工科生,懒但接梗快)。\n"
+                       "下面是群聊记录, 你此刻想插话的冲动是多少分(0-10)?\n"
+                       "打分依据: 话题你是否感兴趣(游戏/校园/梗/吃的/技术) / 有没有能接的梗 / 情绪共鸣。\n"
+                       "只输出一个数字。\n\n" + self._window_text(gid),
+                system_prompt="你是激活度评估器, 只输出0-10之间一个数字。")
+            raw = (getattr(r, "completion_text", "") or "").strip()
+            m = re.search(r'\d+', raw)
+            return int(m.group()) if m else None
+        except Exception:
+            return None
 
     # ---------- 工具 ----------
     def _silent_now(self) -> bool:
@@ -103,6 +184,8 @@ class GroupLurkerPlugin(Star):
             return None
 
     def _build_chain(self, text: str) -> list:
+        import re as _rv2
+        text = _rv2.sub(r'\[[【]{1,2}\s*VOICE\s*[:：][^\]】]*[\]】]', ' ', text)
         """文本里的[[EMOJI:kw]]替换成真表情包; 没匹配到的标记吞掉"""
         parts = []
         tags = EMOJI_TAG.findall(text)
@@ -132,6 +215,10 @@ class GroupLurkerPlugin(Star):
                 {"name": sender, "time": t, "text": text[:120], "master": is_master,
                  "id": str(getattr(event.message_obj, "message_id", "") or "")}
             )
+            # 群印象: 累计原始日志, 够量后台总结
+            self.raw_log[gid].append(f"{sender}: {text[:80]}")
+            if len(self.raw_log[gid]) >= IMP_EVERY:
+                asyncio.create_task(self._summarize_group(gid))
 
             # @自己的消息由主管道处理, 围观插件让路 (否则会双发)
             self_id = str((getattr(event, "get_self_id", lambda: "")() or ""))
@@ -146,9 +233,11 @@ class GroupLurkerPlugin(Star):
                 return
 
             if is_master:
-                fire = self._master_fire(gid)
+                fire, reason = self._master_fire(gid), "master"
+            elif NAME_PAT.search(text):
+                fire, reason = self._master_fire(gid), "name"    # 有人提Yuan: 短冷却高把握
             else:
-                fire = self._roll(gid)
+                fire, reason = self._roll(gid), "roll"
             if not fire:
                 return
 
@@ -157,11 +246,27 @@ class GroupLurkerPlugin(Star):
             if not self.windows[gid]:
                 return
 
+            # 读空气: roll路径先过激活度打分, 低分沉默; 名字/主人路径直接进
+            if reason == "roll":
+                sc = await self._activation(gid)
+                if sc is not None and sc < SCORE_TH:
+                    return
+
             provider = self.context.get_using_provider()
             if provider is None:
                 return
 
             sys_prompt = self.prompt or "你是一个QQ群里的闲聊分身。没话说就输出[SKIP]。"
+            # 注入当前日程状态 + 群印象(twin_schedule/本插件写的, 松耦合读文件)
+            try:
+                cur = open(SCHED_NOW, encoding="utf-8").read().strip()
+                if cur:
+                    sys_prompt += f"\n[当前状态] 你现在在{cur}"
+            except Exception:
+                pass
+            imp = self._impress_text(gid)
+            if imp:
+                sys_prompt += "\n" + imp
             extra = ""
             if is_master:
                 extra = ("\n\n# 本轮任务：主人发言捧场\n"

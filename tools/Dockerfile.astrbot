@@ -1,0 +1,2 @@
+FROM soulter/astrbot:latest
+RUN pip install --no-cache-dir edge-tts json5 'apilmoji[tqdm]>=0.3.0,<1.0.0' -i https://pypi.tuna.tsinghua.edu.cn/simple

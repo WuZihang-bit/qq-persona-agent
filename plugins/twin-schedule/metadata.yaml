@@ -1,0 +1,5 @@
+name: twin_schedule
+desc: 日程系统——每天自动生成女大学生日程, 回复时注入当前时段状态(在上课/干饭/开黑), 拟人核心
+version: 1.0.0
+author: wuzihang
+repo: https://github.com/WuZihang-bit/qq-persona-agent

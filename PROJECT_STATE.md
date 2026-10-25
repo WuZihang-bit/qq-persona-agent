@@ -89,3 +89,22 @@ git add -A && git commit -m "xxx" && git push
 - 被问"我是谁"→ 自然回避（叫我 Yuan 就行/问这干嘛哈哈），**绝不猜主人**
 - 主人识别：QQ:1522727368 + 昵称鸢飛 双特征，对外不暴露关系
 - 弈星被动触发才聊、emoji 含义精确匹配才发、短句连发不写作文
+
+## 九、v0.4 升级批次（2026-10-25，对标 MaiBot 拟人化 + 全链路运维）
+
+**新增能力**：
+- **twin_schedule 日程系统**：每天自动生成女大学生日程（LLM失败回落内置模板），回复注入"现在在干嘛+心情"；`/日程` 查看、`/日程 新` 重生成
+- **读空气（group-lurker）**：普通消息 13% roll → LLM 激活度打分(0-10) ≥6 才插话；提"yuan"高把握接话；打分每小时≤20次控成本
+- **群印象+称呼**：每群累计 220 条消息自动总结画像（氛围/话题/核心成员/别名）注入所有回复，根治"认错人"
+- **记忆 v2（twin-memory）**：四类档案（印象/事件/关系）每 30 轮 LLM 合并去重淘汰 + 每日聊天日记 + 主动消息入档（治"发完就忘"记忆黑洞）
+- **/群日报**：话题榜/活跃人物/今日金句/氛围总结
+- **空间互动（astrbot_plugin_qzone）**：每天 8 点自动逛好友说说点赞评论（NapCat get_cookies 免扫码）；自动发说说已关（保留手动 /发空间）
+- **点歌（astrbot_plugin_music）**：AI 点歌/卡片/语音/热评
+
+**运维**：
+- 看门狗：`tools/watchdog.sh` + cron 每 2 分钟——掉线自动重启/1小时3次熔断/凌晨2-7静默/ServerChan 微信推送
+- 每日备份：`tools/backup.sh`（astrbot 数据+QQ 登录卷，留 7 天）
+- 自定义镜像：`tools/Dockerfile.astrbot`（官方镜像+edge-tts/json5/apilmoji 固化，容器重建不再丢依赖）
+- NapCat WebUI 状态探测：sha256(token+".napcat") 换 Credential → CheckLoginStatus
+
+**踩坑**：人格真身在 SQLite `data_v4.db` personas 表（data/persona/*.txt 是旧副本）；qzone 插件 publish_cron 在 `trigger.` 嵌套下；服务器连不上 GitHub（插件走本机中转 tar 上传）
