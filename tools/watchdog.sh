@@ -63,7 +63,7 @@ awk -v n=$NOW -v w=$WINDOW '$1 > n-w' "$RESTART_LOG" > "$RESTART_LOG.tmp" && mv 
 CNT=$(wc -l < "$RESTART_LOG")
 
 if [ $CNT -ge $MAX_RESTARTS ]; then
-  [ "$PREV" != breaker ] && { log "FUSE 熔断: ${WINDOW}s内已重启${CNT}次仍离线,停止自动重启转人工(去WebUI 6099扫码)"; push "QQ机器人掉线-需人工" "自动重登多次失败已熔断,请扫码: http://1.95.144.92:6099/webui"; echo breaker > "$STATE"; }
+  [ "$PREV" != breaker ] && { log "FUSE 熔断: ${WINDOW}s内已重启${CNT}次仍离线,停止自动重启转人工(去WebUI 6099扫码)"; push "QQ机器人掉线-需人工" "自动重登多次失败已熔断,请扫码: http://<YOUR_SERVER_IP>:6099/webui"; echo breaker > "$STATE"; }
   exit 0
 fi
 if [ $NIGHT -eq 1 ]; then

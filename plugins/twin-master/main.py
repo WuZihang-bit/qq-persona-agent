@@ -17,9 +17,9 @@ import json
 def _load_masters():
     try:
         with open(os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "masters.json")), encoding="utf-8") as f:
-            return json.load(f).get("masters", ["1522727368"])
+            return json.load(f).get("masters", [os.environ.get("MASTER_QQ", "")])
     except Exception:
-        return ["1522727368"]
+        return [os.environ.get("MASTER_QQ", "")]
 
 def _is_master_qq(qq):
     return str(qq) in _load_masters()
@@ -37,8 +37,8 @@ from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.message_components import Plain, Node
 from astrbot.core.message.message_event_result import MessageChain
 
-MASTER_QQ = "1522727368"
-BOT_UIN = "3662430655"
+MASTER_QQ = os.environ.get("MASTER_QQ", "")
+BOT_UIN = os.environ.get("BOT_UIN", "")
 AUDIT_FP = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "logs", "master_commands.log"))
 DAILY_SEND_CAP = 20            # 主动发言每日上限(防滥用/防风控)
 CAP_FILE = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "master_send_counter.json"))

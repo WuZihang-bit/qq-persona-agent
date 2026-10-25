@@ -5,104 +5,102 @@
 ![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-GPL--3.0-green)
 ![Platform](https://img.shields.io/badge/Platform-QQ_NT-blueviolet)
-![Tests](https://img.shields.io/badge/Tests-14%2F14%20passed-brightgreen)
-![Eval](https://img.shields.io/badge/Persona_Eval-5.00%2F5-gold)
+![Plugins](https://img.shields.io/badge/Plugins-15-ff69b4)
+![Version](https://img.shields.io/badge/version-v0.5-brightgreen)
 
-**[架构白皮书](docs/AGENT.md) · [快速部署](docs/deploy.md) · [人格蒸馏](docs/distill.md) · [在线控制台](tools/console_server.py)**
+**[架构白皮书](docs/AGENT.md) · [快速部署](docs/deploy.md) · [人格蒸馏](docs/distill.md) · [Web控制台](tools/console_server.py)**
 
 </div>
 
-> **Eidolon**（希腊语"灵魂幻影"，作者称之为「纸鸢」——风筝飞得再远，线在主人手里）。
->
-> 把你自己**蒸馏**成一个 QQ 机器人 / social agent：从聊天记录提取说话风格 → 生成人格提示词 →
-> 接入 QQ，得到一个会像你一样说话和做事的 AI——短句、连发、玩梗、发表情包、
-> 群里围观插话、回复带"对方正在输入…"、引用回复、联网搜索、长期记忆、多步 Agent 任务。
->
-> 关键词: QQ机器人 · 数字分身 · 人格蒸馏 · Persona Agent · NapCat · AstrBot · LLM Agent · AI Companion
+> **Eidolon**（希腊语"灵魂幻影"）——把你自己**蒸馏**成一个活在 QQ 里的数字分身：
+> 从 36 万条真实聊天记录提炼说话风格 → 生成人格提示词 → 部署到云服务器 7×24 在线。
+> 她会像真人一样作息、看气氛说话、记得你发过的图、主动找你聊天——
+> 不止"会回消息"，而是**过一个数字人生**。
 
 **仅限蒸馏你自己。** 未经他人同意蒸馏他人人格可能违反《个人信息保护法》，详见 [docs/ethics.md](docs/ethics.md)。
 
-![status](https://img.shields.io/badge/status-v0.1_alpha-orange) ![platform](https://img.shields.io/badge/platform-QQ_NT-blue) ![license](https://img.shields.io/badge/license-GPL--3.0-green)
+## ✨ 它会做什么（v0.5 全景）
 
-## 它会做什么
-
+### 🧍 拟人引擎 —— 让"像人"成为系统工程
 | 能力 | 说明 |
 |---|---|
-| 🎭 人格扮演 | 基于你的聊天记录蒸馏的人格提示词，学你的口头禅、句式、情绪反应 |
-| 💬 拟人化发送 | 随机延迟、私聊"对方正在输入…"、多段回复连发、全局发送节流 |
-| 👀 群聊围观 | 不@也按低概率插话（有梗才接，没话说保持沉默），防打扰硬约束 |
-| 👑 主人捧场 | 你的发言会被高优先级接话 |
-| 😂 表情包 | 自动收集群表情包（GLM 视觉打标签入库），对话中按情绪/关键词检索发送 |
-| 🔗 引用回复 | 长回复自动引用触发消息，支持 `[QUOTE:序号]` 引用群内任意消息 |
-| 🔍 联网搜索 | Tavily 接入，路由器自动判断何时搜索，无需指令 |
-| 🧠 长期记忆 | 对话后自动抽取事实持久化，下次对话自动注入 |
-| ⏰ 主动行为 | 定时提醒、事项到期跟进、群聊围观插话 |
-| 🤖 主人专属Agent | 多步任务引擎：群分析/调研/长进程，断点续跑 |
+| **日程骰子系统** | 每天摇三颗骰子（心情×15/地点×13/体力×5），日程围绕骰子自然生长——"emo半天，晚上被糖炒栗子救回来"这种有情绪弧线的一天 |
+| **日程联动打字延迟** | 上课 16~45s 偷看手机式慢回、赶作业 9~26s、空闲 2.5~9s，18% 概率"正好在看手机"秒回 |
+| **读空气（激活度评分）** | 群消息先过 0-10 分"想插话冲动"评分（话题兴趣×梗×情绪共鸣），≥6 才开口——会潜水几小时突然精准插嘴 |
+| **刻意的不完美** | 偶尔打错字下一条自纠、短句连发、消息气泡化，"最像而不是最好" |
 
-## 架构
+### 🧠 记忆系统 —— 从"记事"到"懂你"
+| 能力 | 说明 |
+|---|---|
+| **四类档案记忆** | 印象/事件/关系原子条目，每 30 轮 LLM 合并去重淘汰，时间衰减 |
+| **每日聊天日记** | 一天一段叙事，下次对话自然衔接"昨天你们聊了…" |
+| **图片记忆** | 记住见过的图（VLM 免费模型打标），`/想起 猫` → `/发图 2` 原图重发 |
+| **主动消息入档** | 主动发的话也进记忆，治"发完就忘"记忆黑洞 |
+| **群印象+黑话+称呼** | 每群自动总结氛围画像/专属梗/成员外号，根治"认错人" |
+
+### ❤️ 社交生命感 —— 会主动、有温度
+| 能力 | 说明 |
+|---|---|
+| **晚间主动关怀** | 看日程挑空闲时段主动找主人搭话（每天≤2次、聊过4h内不打扰） |
+| **到期跟进** | "上次你提到的面试，后来怎么样了？"——open_loops 自动追踪 |
+| **生日祝福** | `/生日` 登记，当天上午 LLM 口语化祝福（不是贺卡腔） |
+| **好友感知** | 新好友自动通知主人 + 人格化破冰 |
+| **签到游戏化** | `/签到` 连续加成+运势，`/好感度` 情感引擎数值+等级+排行 |
+| **表达自学习** | 群友"哈哈/牛/好活"的反应强化她的说法风格，越聊越对胃口 |
+
+### 🌐 空间与群聊生态
+| 能力 | 说明 |
+|---|---|
+| **QQ空间全家桶** | `/发空间` AI 写诗/看法/知识+AI 配图（GPT主/CogView备/纯文本兜底）；每天自动逛好友说说点赞评论；自己的说说被评论 15 分钟内人格化回评 |
+| **群围观** | 概率插话+激活度评分+主人发言捧场+引用回复+表情包斗图 |
+| **群日报** | `/群日报` 话题榜/活跃人物/今日金句（群聊圣经）/氛围总结 |
+| **图片吐槽** | 群里的梗图偶尔被她"看到"并吐槽一句 |
+| **点歌** | AI 点歌/卡片/语音/热评/歌单 |
+
+### 🛡️ 生产级运维
+| 能力 | 说明 |
+|---|---|
+| **看门狗** | 每 2 分钟巡检，掉线自动密码重登，熔断+夜间静默，微信实时推送 |
+| **每日备份** | 数据+QQ登录态自动打包，7 天轮换 |
+| **固化镜像** | Dockerfile 固化全部依赖，容器重建零丢失 |
+| **Web 控制台** | 一页看全：系统/日程/记忆档案/群印象/关怀计划/LLM用量，30s 自刷新 |
+| **`/自检` `/记忆导出`** | QQ 里一键体检；全量记忆打包迁移 |
+
+## 🏗️ 架构
 
 ```
-QQ小号 ◄── OneBot v11 ──► NapCatQQ        # 协议端（第三方开源，非本项目）
-                             │
-                             ▼
-                         AstrBot            # bot框架（第三方开源，非本项目）
-                             │
-                     persona-humanizer     # 本项目：拟人化发送
-                     group-lurker          # 本项目：围观插话+主人捧场
-                     emoji-hub             # 本项目：表情包收集/检索
-                             │
-                        LLM API            # DeepSeek / GLM / ...
-                             │
-                    tools/ 蒸馏流水线        # 本项目：聊天记录→人格
+   QQ (NT) ──OneBot v11──► NapCat 容器 ──反向WS──► AstrBot 容器 (15 插件)
+                                                     │
+                        ┌────────────┬───────────────┼──────────────┬─────────────┐
+                        ▼            ▼               ▼              ▼             ▼
+                   拟人引擎        记忆系统        社交引擎        LLM/多模态     运维层
+                 (日程/延迟/读空气) (档案/日记/图忆) (关怀/空间/签到) (GLM/VLM/TTS) (看门狗/备份/控制台)
 ```
 
-## 评测与质量
+**插件清单**（`plugins/`，均可独立装卸）：
+`twin_schedule` 日程骰子 · `persona-humanizer` 拟人发送 · `group-lurker` 群围观/读空气/表达学习 ·
+`twin-memory` 记忆v2/关怀/生日 · `twin-brain` Jev路由+Agent · `twin-tools` 自主工具 ·
+`twin-master` 主人指令 · `twin-imgmemory` 图片记忆 · `twin-checkin` 签到游戏化 ·
+`twin-guard` 好友感知 · `twin-qzone-care` 空间回评 · `emoji-hub` 表情包自收集（社区: 点歌/空间互动插件）
 
-| 指标 | 结果 | 工具 |
-|---|---|---|
-| 人格一致性(裁判模型评分) | **5.00 / 5.00**(10场景) | [eval_persona.py](tools/eval_persona.py) |
-| 核心工具单元测试 | **14 / 14 passed** | [test_core.py](plugins/twin-tools/test_core.py) |
-| 隐私红线(真实姓名) | 0 泄露(巧妙绕答) | 评测用例#3 |
-| AI 自证合规 | 100% 大方承认 | 评测用例#4 |
-| 盲测识别率 | 收集工具就绪, 目标≈50% | [blindtest_server.py](tools/blindtest_server.py) |
+## 🚀 快速开始
 
-## 快速开始
+```bash
+# 1. 部署 NapCat + AstrBot (Docker, 见 docs/deploy.md)
+# 2. 配置: masters.json 主人白名单 + 环境变量 BOT_UIN/MASTER_QQ + API Key
+# 3. 插件: cp -r plugins/* /AstrBot/data/plugins/ && 重启
+# 4. 扫码登录, 发 /自检 通过即上线
+```
 
-0. 准备：一个小号 QQ（**不要用大号**）、一个 LLM API key、（可选）GLM key + Tavily key
-1. 按 [docs/deploy.md](docs/deploy.md) 部署 NapCat + AstrBot（~20 分钟）
-2. 把 `plugins/` 下三个插件拷进 AstrBot 的 `data/plugins/`
-3. 复制 `config.example.yaml` 为 `config.yaml`，填入你的 QQ 号和 key
-4. 用 [tools/](tools/) 蒸馏你自己（见 [docs/distill.md](docs/distill.md)），或先用 `personas/example/` 手写人格跑通
-5. 拉群测试：@它说话、发表情包让它收集、看它围观插话
+人格从哪来？→ [docs/distill.md](docs/distill.md)：聊天记录解密 → 风格分析 → persona 生成流水线。
 
-## Agent 能力
+## 📜 版本史
 
-本项目不只是聊天机器人——路由决策、12个自主工具、长期记忆、主动行为、长任务断点续跑。
-完整架构与能力对照见 [docs/AGENT.md](docs/AGENT.md)。
+- **v0.5** 签到游戏化+图片记忆+好友感知+表达自学习+/自检/记忆导出
+- **v0.4.x** 日程骰子/读空气/群印象/记忆v2/主动关怀/Web控制台/看门狗备份固化镜像/空间互动/点歌/群日报
+- **v0.3** 无状态会话+多主人+TTS语音+发空间(AI配图)
+- **v0.1** 人格蒸馏管线+拟人发送+群围观，14/14 单测，人格评测 5.00/5
 
-## 文档
+## ⚖️ 许可与边界
 
-- [Agent架构白皮书](docs/AGENT.md)
-- [部署指南](docs/deploy.md)
-- [人格蒸馏流水线](docs/distill.md) ★ 核心玩法
-- [插件说明](docs/plugins.md)
-- [路线图](docs/roadmap.md)
-- [发布操作手册](docs/publish.md)
-- [风控与封号](docs/risk.md)
-- [伦理与法律边界](docs/ethics.md)
-
-## 已知限制
-
-- 新号风控严格，频繁登录切换会被踢（见 risk.md 的养号建议）
-- 表情包自动收集需要视觉模型（GLM-4V 系免费额度即可）
-- 人格模拟是提示词工程，不是微调——形似容易，遇到没聊过的话题会露馅
-
-## 致谢
-
-- [NapCatQQ](https://github.com/NapNeko/NapCatQQ) / [AstrBot](https://github.com/AstrBotDevs/AstrBot) — 站在巨人的肩膀上
-- [QQBackup 社区](https://github.com/QQBackup) — QQNT 数据库解密技术来源
-- [immortal-skill](https://github.com/agenmod/immortal-skill) / [forge-skill](https://github.com/YIKUAIBANZI/forge-skill) — 人格蒸馏框架参考
-
-## License
-
-GPL-3.0，附加使用限制见 [LICENSE](LICENSE) 末尾 Additional Terms。
+GPL-3.0。本项目仅供学习研究；蒸馏他人人格需本人同意；请遵守 QQ 用户协议并自担账号风控风险（详见 [docs/risk.md](docs/risk.md)）。

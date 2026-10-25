@@ -120,7 +120,7 @@ class TestForwardParsing:
 
     def test_node_payload(self):
         """send_forward 的 node 结构符合 OneBot v11"""
-        node = {"type": "node", "data": {"uin": "10001", "name": "吴子航",
+        node = {"type": "node", "data": {"uin": "10001", "name": "主人",
                 "content": [{"type": "text", "data": {"text": "段1"}}]}}
         assert node["type"] == "node" and node["data"]["content"][0]["data"]["text"] == "段1"
 

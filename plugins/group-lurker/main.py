@@ -15,8 +15,8 @@ from astrbot.core.message.message_event_result import MessageChain
 from astrbot.core.star.filter.event_message_type import EventMessageType
 
 # ---- 可调参数 ----
-BOT_UIN = "3662430655"     # 小号(bot自己)的QQ号: 用于识别@消息
-MASTER_QQ = "1522727368"   # 主人大号: 他的消息高优先级接话
+BOT_UIN = os.environ.get("BOT_UIN", "")      # 小号(bot自己)的QQ号
+MASTER_QQ = os.environ.get("MASTER_QQ", "")  # 主人大号
 MASTER_COOLDOWN = 45       # 主人发言的接话冷却(秒), 防止连刷屏
 CHANCE = 0.13              # 普通群消息roll进打分的概率(读空气评分会再过滤)
 GROUP_COOLDOWN = 480       # 普通插话: 同一群最小间隔(秒)

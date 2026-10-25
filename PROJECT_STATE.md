@@ -4,10 +4,10 @@
 
 ## 一、项目全景
 
-**这是什么**：QQ 数字分身系统——把主人（吴子航，QQ 1522727368，网名鸢飛）蒸馏成一个跑在云服务器上的 AI 分身（小号 Yuan，QQ 3662430655）。女生人格、暧昧关系设定。
+**这是什么**：QQ 数字分身系统——把把主人蒸馏成一个跑在云服务器上的 AI 分身（小号 Yuan，QQ 号经环境变量 BOT_UIN 配置）。女生人格、暧昧关系设定。
 
 **三个组成部分**：
-1. **云端运行实例**：华为云 Flexus 2核2G（IP: 1.95.144.92），Ubuntu 24.04 + Docker（NapCat + AstrBot 双容器）
+1. **云端运行实例**：华为云 Flexus 2核2G（IP 略），Ubuntu 24.04 + Docker（NapCat + AstrBot 双容器）
 2. **开源仓库**：github.com/WuZihang-bit/qq-persona-agent（GPL-3.0，9 篇文档 + 6 插件 + 评测框架）
 3. **本地开发环境**：F:\yuanfei_skill\bot（调试用）+ F:\qq-digital-twin（开源仓库）
 
@@ -15,11 +15,11 @@
 
 | 项 | 值 |
 |---|---|
-| SSH | root@1.95.144.92 密码 REDACTED_PASSWORD（**已在聊天中暴露，建议改**） |
+| SSH | root@<YOUR_SERVER_IP> 密码自管（切勿入库） |
 | 容器 | napcat / astrbot / portainer，均 restart:always，host 网络 |
 | 数据目录 | /root/eidolon/data（AstrBot 挂载为 /AstrBot/data） |
 | 人格配置 | /root/eidolon/masters.json（主人名单）+ data/plugins/*/group_prompt.txt |
-| 面板 | AstrBot:6185（astrbot/wuzihang2026）、Portainer:9000、NapCat:6099 |
+| 面板 | AstrBot:6185 / Portainer:9000 / NapCat:6099（密码自管, 切勿入库） |
 
 ## 三、已修复的坑（全部验证过，别再踩）
 
@@ -74,7 +74,7 @@
 
 ```bash
 # SSH 连服务器
-ssh root@1.95.144.92          # 密码 REDACTED_PASSWORD（建议改）
+ssh root@<YOUR_SERVER_IP>     # 密码自管
 
 # 重启容器
 docker restart napcat astrbot
@@ -87,7 +87,7 @@ git add -A && git commit -m "xxx" && git push
 
 - 反骨已删（说话太冲）、串子软化为开玩笑抖机灵
 - 被问"我是谁"→ 自然回避（叫我 Yuan 就行/问这干嘛哈哈），**绝不猜主人**
-- 主人识别：QQ:1522727368 + 昵称鸢飛 双特征，对外不暴露关系
+- 主人识别：masters.json 白名单 + 昵称双特征，对外不暴露关系
 - 弈星被动触发才聊、emoji 含义精确匹配才发、短句连发不写作文
 
 ## 九、v0.4 升级批次（2026-10-25，对标 MaiBot 拟人化 + 全链路运维）

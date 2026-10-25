@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Eidolon Web 控制台(服务器版): 零依赖, 只读
-python3 console_server.py [port]  ->  http://1.95.144.92:8899
+python3 console_server.py [port]  ->  http://<YOUR_SERVER_IP>:8899
 面板: 系统状态(watchdog/QQ/容器) / 今日日程 / 记忆档案 / 群印象 / 提醒跟进 / 主动关怀 / 表情包 / 用量
 """
 import json

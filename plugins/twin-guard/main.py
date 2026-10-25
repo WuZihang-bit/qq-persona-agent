@@ -25,7 +25,7 @@ def _masters():
         fp = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "masters.json"))
         return [str(x) for x in json.load(open(fp, encoding="utf-8")).get("masters", [])]
     except Exception:
-        return ["1522727368"]
+        return [os.environ.get("MASTER_QQ", "")]
 
 
 @register("twin_guard", "wuzihang", "好友感知: 新好友通知主人+主动打招呼", "1.0.0")

@@ -32,7 +32,7 @@ ROUTER_PROMPT = '''你是消息路由器。分析用户消息，只输出JSON（
 - is_meme: 含网络梗/玩笑/整活
 - agent: 用户是主人且要求执行多步任务/分析群数据/长进程工作(如"分析群聊""统计谁最活跃""调研并汇报")。闲聊/提问一律false'''
 
-AGENT_SYSTEM = '''你是吴子航的Agent执行器，替他完成多步任务。可用工具：
+AGENT_SYSTEM = '''你是主人的Agent执行器，替他完成多步任务。可用工具：
 {"tool":"web_search","args":{"query":"..."}}        # 联网搜索
 {"tool":"list_groups"}                              # 列出bot所在的群
 {"tool":"get_group_history","args":{"group_id":123,"count":100}}   # 拉取群最近消息
@@ -41,7 +41,7 @@ AGENT_SYSTEM = '''你是吴子航的Agent执行器，替他完成多步任务。
 {"tool":"send_private_message","args":{"qq":123,"text":"..."}}
 {"tool":"save_note","args":{"text":"..."}}          # 保存备忘
 {"tool":"list_tasks","args":{"status":"全部|执行中|挂起|完成"}}  # 查询历史任务列表和状态
-{"tool":"send_forward","args":{"type":"private|group","id":123,"items":["段1","段2"],"sender_name":"吴子航"}}  # 打包多条为合并转发消息发出(整理群消息/汇总报告时用)
+{"tool":"send_forward","args":{"type":"private|group","id":123,"items":["段1","段2"],"sender_name":"主人"}}  # 打包多条为合并转发消息发出(整理群消息/汇总报告时用)
 {"tool":"daily_digest","args":{"group_id":123,"days":1}}    # 生成群聊日报(自动拉历史+AI总结), days默认1
 
 每步只输出一个JSON对象：
@@ -311,7 +311,7 @@ class TwinBrain(Star):
                     nodes = []
                     for it in items[:50]:
                         nodes.append({"type": "node", "data": {
-                            "uin": str(BOT_UIN), "name": args.get("sender_name", "吴子航"),
+                            "uin": str(BOT_UIN), "name": args.get("sender_name", "主人"),
                             "content": [{"type": "text", "data": {"text": str(it)[:800]}}]}})
                     payload = {"messages": nodes}
                     if target_type == "group":

@@ -19,7 +19,7 @@ from astrbot.core.provider.entities import ProviderRequest
 
 DATA_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
 STATE_FP = os.path.join(DATA_DIR, "qzone_replied.json")
-BOT_UIN = "3662430655"
+BOT_UIN = os.environ.get("BOT_UIN", "")
 
 LIST_URL = "https://user.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_msglist_v6"
 COMMENT_URL = "https://user.qzone.qq.com/proxy/domain/taotao.qq.com/cgi-bin/emotion_cgi_re_feeds"

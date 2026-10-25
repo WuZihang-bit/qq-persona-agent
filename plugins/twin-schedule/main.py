@@ -199,7 +199,7 @@ class TwinSchedule(Star):
             masters = json.load(open(os.path.normpath(os.path.join(
                 os.path.dirname(__file__), "..", "..", "masters.json")), encoding="utf-8")).get("masters", [])
         except Exception:
-            masters = ["1522727368"]
+            masters = [__import__("os").environ.get("MASTER_QQ", "")]
         today = time.strftime("%Y-%m-%d")
         if arg.strip() in ("新", "new", "刷新"):
             if str(event.get_sender_id()) not in masters:
