@@ -196,6 +196,91 @@ class TwinMaster(Star):
         _audit("生日", f"qq={qq} {date} {name}")
         await event.send(MessageChain(chain=[Plain(f"已登记: {name or qq}({qq}) 生日 {date}, 当天早上会收到祝福")]))
 
+    # ---------- /自检 ----------
+    @filter.command("自检")
+    async def cmd_selfcheck(self, event: AstrMessageEvent):
+        """主人在QQ里一键体检: QQ在线/LLM连通/记忆/日程/各档案"""
+        if not self._is_master(event):
+            await self._deny(event); return
+        event.stop_event()
+        _audit("自检")
+        lines = ["=== 自检 ==="]
+        bot = getattr(event, "bot", None)
+        # 1. QQ在线
+        try:
+            info = await ca(bot, "get_login_info")
+            lines.append(f"QQ在线: {info.get('nickname')} ({info.get('user_id')}) ✓")
+        except Exception as e:
+            lines.append(f"QQ在线: ✗ {type(e).__name__}")
+            await event.send(MessageChain(chain=[Plain("\n".join(lines))]))
+            return
+        # 2. LLM连通(极小调用)
+        try:
+            provider = self.context.get_using_provider()
+            r = await provider.text_chat(prompt="回复OK两个字母", system_prompt="你只输出OK")
+            ok = (getattr(r, "completion_text", "") or "").strip()
+            lines.append(f"LLM: {'✓ ' + ok[:10] if ok else '✗ 空返回'}")
+        except Exception as e:
+            lines.append(f"LLM: ✗ {str(e)[:60]}(可能5h限额中)")
+        # 3. 数据资产
+        fen = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
+        try:
+            mems = [f for f in os.listdir(os.path.join(fen, "memory")) if f.endswith(".json")]
+            lines.append(f"记忆档案: {len(mems)}人")
+            imgs = len([f for f in os.listdir(os.path.join(fen, 'img_mem')) if f.endswith('.jpg')]) \
+                if os.path.isdir(os.path.join(fen, 'img_mem')) else 0
+            lines.append(f"图片记忆: {imgs}张")
+            emojis = len(json.load(open(os.path.join(fen, "emojis", "index.json"), encoding="utf-8")))
+            lines.append(f"表情包: {emojis}张")
+            try:
+                sch = json.load(open(os.path.join(fen, "schedule.json"), encoding="utf-8"))
+                now_txt = open(os.path.join(fen, "schedule_now.txt"), encoding="utf-8").read().strip()
+                lines.append(f"日程: {sch.get('date')} | 现在: {now_txt or '—'}")
+            except Exception:
+                lines.append("日程: 未生成(下次对话时自动)")
+        except Exception as e:
+            lines.append(f"数据统计异常: {e}")
+        lines.append(f"时间: {datetime.now():%m-%d %H:%M:%S}")
+        await event.send(MessageChain(chain=[Plain("\n".join(lines))]))
+
+    # ---------- /记忆导出 ----------
+    @filter.command("记忆导出")
+    async def cmd_export(self, event: AstrMessageEvent):
+        """打包全部记忆数据JSON私发给主人"""
+        if not self._is_master(event):
+            await self._deny(event); return
+        event.stop_event()
+        _audit("记忆导出")
+        yield event.plain_result("打包中..")
+        fen = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng"))
+        bundle = {"exported": datetime.now().isoformat(timespec="seconds"),
+                  "persona": "Yuan", "memory": {}, "group_impressions": {}, "other": {}}
+        for sub, dst in [("memory", "memory"), ("group_impressions.json", None),
+                         ("schedule.json", None), ("birthdays.json", None),
+                         ("checkin.json", None), ("img_memory.json", None)]:
+            p = os.path.join(fen, sub)
+            try:
+                if dst == "memory":
+                    bundle["memory"] = {f: json.load(open(os.path.join(p, f), encoding="utf-8"))
+                                        for f in os.listdir(p) if f.endswith(".json")}
+                else:
+                    bundle["group_impressions" if "impression" in sub else "other"][sub] = \
+                        json.load(open(p, encoding="utf-8"))
+            except Exception:
+                pass
+        out_fp = os.path.join(fen, f"memory_export_{datetime.now():%m%d_%H%M}.json")
+        json.dump(bundle, open(out_fp, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+        bot = getattr(event, "bot", None)
+        try:
+            await ca(bot, "upload_private_file", {
+                "user_id": int(event.get_sender_id()),
+                "file": out_fp, "name": os.path.basename(out_fp)})
+            await event.send(MessageChain(chain=[Plain(
+                f"已导出({os.path.getsize(out_fp) // 1024}KB, 记忆{len(bundle['memory'])}人)私发给你")]))
+        except Exception as e:
+            await event.send(MessageChain(chain=[Plain(
+                f"导出成功但发送失败({e}), 文件在服务器: {out_fp}")]))
+
     # ---------- /发言 ----------
     @filter.command("发言")
     async def cmd_speak(self, event: AstrMessageEvent, group_id: int, *, content: str = ""):

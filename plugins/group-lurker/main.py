@@ -30,6 +30,10 @@ SCORE_TH = 6               # 激活度>=此分才组织回复
 IMP_EVERY = 220            # 每累计多少条群消息做一次群印象总结
 IMG_CHANCE = 0.05          # 纯图消息吐槽概率(VLM有成本, 压低)
 IMG_CAP_H = 6              # VLM识图每小时上限
+EXP_FP = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "expressions.json"))
+EXP_KEEP = 80              # 表达库上限
+POS_PAT = re.compile(r"哈哈|哈哈哈|笑死|牛|666|\+1|好活|爱了|有意思|可以|妙啊|绷不|对对对|真实|eleven|泪目|排面")
+NEG_PAT = re.compile(r"尬|无语|汗|离谱|？？？|\?\?\?|creepy|无聊|机器人|ai吧")
 
 PROMPT_FILE = os.path.join(os.path.dirname(__file__), "group_prompt.txt")
 EMOJI_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "fensheng", "emojis"))
@@ -55,6 +59,50 @@ class WuzihangGroupPlugin(Star):
         self._score_times = []                # 激活度打分时间戳(小时窗)
         self._vlm_times = []                  # VLM识图时间戳(小时窗)
         self._vlm_key = None                  # GLM key(懒加载自cmd_config)
+        self._last_own = {}                   # gid -> 我最近一条发言(表达学习观察窗)
+
+    # ---------- 表达自学习: 群友对我发言的反应 -> 强化/弱化说法 ----------
+    def _exp_load(self):
+        try:
+            return json.load(open(EXP_FP, encoding="utf-8"))
+        except Exception:
+            return {}
+
+    def _exp_save(self, d):
+        keep = sorted(d.items(), key=lambda x: -x[1])[:EXP_KEEP]
+        json.dump(dict(keep), open(EXP_FP, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+    def _credit_own(self, gid, text):
+        self._last_own[gid] = {"text": text[:60], "ts": time.time()}
+
+    def _observe_reaction(self, gid, sender, text):
+        lo = self._last_own.get(gid)
+        if not lo or time.time() - lo["ts"] > 150 or len(lo["text"]) < 4:
+            self._last_own.pop(gid, None)
+            return
+        d = self._exp_load()
+        changed = False
+        if POS_PAT.search(text):
+            d[lo["text"]] = d.get(lo["text"], 0) + 2
+            changed = True
+            print(f"[group] 表达+2: {lo['text'][:30]}")
+        elif NEG_PAT.search(text):
+            d[lo["text"]] = d.get(lo["text"], 0) - 1
+            changed = True
+        self._last_own.pop(gid, None)
+        if changed:
+            self._exp_save({k: v for k, v in d.items() if v > 0})
+
+    def _exp_inject(self) -> str:
+        try:
+            d = self._exp_load()
+            tops = [t for t, s in sorted(d.items(), key=lambda x: -x[1])[:5]
+                    if s >= 2 and 4 <= len(t) <= 50]
+            if tops:
+                return "\n[你以前反应很好的说法(风格参考, 别原句复读)]\n" + "\n".join(f"- {t}" for t in tops)
+        except Exception:
+            pass
+        return ""
         try:
             self.prompt = open(PROMPT_FILE, encoding="utf-8").read()
         except Exception:
@@ -294,6 +342,7 @@ class WuzihangGroupPlugin(Star):
                 parts = [Reply(id=tid)] + parts
             if parts:
                 await event.send(MessageChain(chain=parts))
+                self._credit_own(gid, reply[:60])
                 print(f"[group] 图片吐槽: {cap[:30]} -> {reply[:30]}")
         except Exception:
             pass
@@ -325,6 +374,10 @@ class WuzihangGroupPlugin(Star):
             self.raw_log[gid].append(f"{sender}: {text[:80]}")
             if len(self.raw_log[gid]) >= IMP_EVERY:
                 asyncio.create_task(self._summarize_group(gid))
+
+            # 表达学习: 观察群友对我上一条发言的反应
+            if str(event.get_sender_id()) != BOT_UIN:
+                self._observe_reaction(gid, sender, text)
 
             # @自己的消息由主管道处理, 围观插件让路 (否则会双发)
             self_id = str((getattr(event, "get_self_id", lambda: "")() or ""))
@@ -386,6 +439,7 @@ class WuzihangGroupPlugin(Star):
             imp = self._impress_text(gid)
             if imp:
                 sys_prompt += "\n" + imp
+            sys_prompt += self._exp_inject()
             extra = ""
             if is_master:
                 extra = ("\n\n# 本轮任务：主人发言捧场\n"
@@ -425,5 +479,6 @@ class WuzihangGroupPlugin(Star):
                 return
             await asyncio.sleep(random.uniform(0.5, 1.5))
             await event.send(MessageChain(chain=parts))
+            self._credit_own(gid, reply[:60])
         except Exception:
             pass  # 监听器绝不影响主流程
