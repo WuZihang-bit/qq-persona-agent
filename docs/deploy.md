@@ -83,3 +83,98 @@ AstrBot WebUI → 配置 → 网页搜索：启用，提供商 Tavily，填入 k
 | 回复重复两条 | 检查是否同时启用了会响应同一条消息的多个插件 |
 | 表情包发不出/发的是文字 | 表情库为空；先让群友发几张图收集，或手动入库 |
 | WebUI 密码忘了 | `astrbot password` 重置 |
+
+---
+
+# 生产级云端部署（进阶）
+
+单文件跑通后，上云 7×24。以下为本人实战架构：**华为云 Flexus 2C2G + Ubuntu 24.04 + Docker 双容器 + systemd 运维层**。
+
+## 9. docker-compose 全家桶
+
+```yaml
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: always
+    network_mode: host
+    environment:
+      - ACCOUNT=<BOT_UIN>
+      - NAPCAT_QUICK_PASSWORD=<QQ密码>   # 掉线自动密码重登的关键
+      - NAPCAT_UID=0
+      - NAPCAT_GID=0
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./napcat/config:/app/napcat/config
+      - ./napcat/cache:/app/napcat/cache
+      - ./napcat/data:/app/napcat/data
+
+  astrbot:
+    image: astrbot-eidolon:latest        # 自建镜像, 见下节
+    container_name: astrbot
+    restart: always
+    network_mode: host
+    environment:
+      - TZ=Asia/Shanghai
+      - BOT_UIN=<BOT_UIN>
+      - MASTER_QQ=<MASTER_QQ>
+      - GLM_KEY=<你的key>
+    volumes:
+      - ./data:/AstrBot/data
+      - ./patches/apply_all.py:/AstrBot/patches/apply_all.py
+```
+
+## 10. 自建固化镜像（容器重建零丢失）
+
+官方镜像不含 edge-tts 等依赖，pip 装在容器里**重建即丢**。固化之：
+
+```dockerfile
+# Dockerfile.astrbot
+FROM soulter/astrbot:latest
+RUN pip install --no-cache-dir edge-tts json5 'apilmoji[tqdm]>=0.3.0,<1.0.0' \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+```bash
+docker build -f Dockerfile.astrbot -t astrbot-eidolon:latest .
+```
+
+## 11. NapCat 掉线看门狗（自动重登+熔断+微信推送）
+
+QQ 会不定期踢下线（新号 3~6 小时一次，随养号降低）。`tools/watchdog.sh`：
+每 2 分钟经 NapCat WebUI API 检测登录态（`sha256(token+".napcat")` 换 Credential → `CheckLoginStatus`），
+掉线自动 `docker restart napcat` 走密码快速登录；**1 小时内失败 3 次自动熔断**（防死循环触发更狠风控）；
+**凌晨 2-7 点静默**（风控高发期不折腾）；恢复/掉线/需扫码全部 ServerChan 微信推送。
+
+```bash
+cp tools/watchdog.sh /root/eidolon/ && chmod +x /root/eidolon/watchdog.sh
+echo 'SENDKEY="SCTxxxx"' > /root/eidolon/watchdog.conf      # sct.ftqq.com 免费领
+(crontab -l; echo '*/2 * * * * flock -n /tmp/qqup.lock /root/eidolon/watchdog.sh >> /root/eidolon/watchdog.log 2>&1') | crontab -
+```
+
+## 12. 每日备份（7 天轮换）
+
+`tools/backup.sh`：凌晨打包 astrbot 数据目录 + NapCat QQ 登录态卷 + 编排文件。
+
+```bash
+(crontab -l; echo '10 4 * * * /root/eidolon/backup.sh >> /root/eidolon/backup.log 2>&1') | crontab -
+```
+
+## 13. Web 控制台
+
+见 [console.md](console.md) —— systemd 常驻的只读可视化面板。
+
+## 14. 装社区插件的姿势（服务器连不上 GitHub 时）
+
+```bash
+# 本机克隆 → 打包 → sftp 上传 → 服务器解压 → 重启
+git clone --depth 1 https://github.com/<author>/<plugin>.git
+tar czf plugin.tar.gz --exclude='.git' <plugin>
+# 上传到服务器后:
+cd /root/eidolon/data/plugins && tar xzf /root/plugin.tar.gz && docker restart astrbot
+```
+
+## 15. 全部指令
+
+见 [commands.md](commands.md)。

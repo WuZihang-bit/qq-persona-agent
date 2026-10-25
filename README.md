@@ -8,7 +8,7 @@
 ![Plugins](https://img.shields.io/badge/Plugins-15-ff69b4)
 ![Version](https://img.shields.io/badge/version-v0.5-brightgreen)
 
-**[架构白皮书](docs/AGENT.md) · [快速部署](docs/deploy.md) · [人格蒸馏](docs/distill.md) · [Web控制台](tools/console_server.py)**
+**[架构白皮书](docs/AGENT.md) · [指令手册](docs/commands.md) · [快速部署](docs/deploy.md) · [人格蒸馏](docs/distill.md) · [Web控制台](docs/console.md)**
 
 </div>
 
@@ -93,6 +93,8 @@
 ```
 
 人格从哪来？→ [docs/distill.md](docs/distill.md)：聊天记录解密 → 风格分析 → persona 生成流水线。
+全部指令速查 → [docs/commands.md](docs/commands.md)（签到/好感度/日程/图片记忆/点歌/语音系列/主人指挥/调试全套）。
+上云 7×24 → [docs/deploy.md](docs/deploy.md) 第 9-15 节：固化镜像/看门狗/每日备份/控制台。
 
 ## 📜 版本史
 
