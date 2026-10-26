@@ -114,6 +114,21 @@ class TwinDraw(Star):
         except Exception:
             pass
 
+    # ---------- LLM工具: 自然语言画图(任意说法) ----------
+    @filter.llm_tool(name="draw_image")
+    async def draw_image(self, event: AstrMessageEvent, desc: str):
+        """画一张图并发给用户。当用户想让你画画/生成图片/出图(不论怎么说)时使用。只有主人能让你画。
+
+        Args:
+            desc(string): 画面描述, 生成前可自行补充细节(场景/光影/风格)
+        """
+        if str(event.get_sender_id()) not in _masters():
+            return "只有主人能让我画画, 婉拒"
+        if not self._cap_ok() or self._busy:
+            return "手头正忙或今天额度用完了, 告诉用户稍后再画"
+        await self._gen_and_send(event, desc.strip()[:60])
+        return "图已画好并发送"
+
     # ---------- /画图 ----------
     @filter.command("画图")
     async def cmd_draw(self, event: AstrMessageEvent, *, desc: str = ""):
