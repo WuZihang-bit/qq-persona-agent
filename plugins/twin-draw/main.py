@@ -86,9 +86,10 @@ class TwinDraw(Star):
             self._busy = False
 
     def _draw(self, desc: str):
-        _dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "twin-master"))
-        if _dir not in sys.path:
-            sys.path.insert(0, _dir)
+        for name in ("twin_master", "twin-master"):     # 服务器/仓库两种目录名
+            _dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", name))
+            if os.path.isdir(_dir) and _dir not in sys.path:
+                sys.path.insert(0, _dir)
         import qzone_flow
         return qzone_flow.gen_image_sync(desc)
 
