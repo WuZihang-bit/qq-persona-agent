@@ -31,7 +31,7 @@ PROMPTS = {
         'user': '以「{topic}」为主题写一首现代诗: 6~10行, 重意象和氛围感, 有具体画面, 最后一行留白。只输出诗本身。',
     },
     '看法': {
-        'sys': '你以主人的口吻说话: 口语化, 有观点有态度, 偶尔毒舌但讲理。',
+        'sys': '你以吴子航的口吻说话: 口语化, 有观点有态度, 偶尔毒舌但讲理。',
         'user': '写一段发QQ空间的「看法」: 关于{topic}, 3~6句话, 像真人发的朋友圈感悟, 有一句点睛的观点。只输出正文。',
     },
     '知识': {
@@ -234,3 +234,19 @@ async def run_flow(bot, provider, ctx_type, ctx_id, kind, topic):
         except Exception:
             pass
         return False, str(e)
+
+
+def gen_image_sync(desc):
+    """同步入口(供twin_draw等线程池调用): 复用gen_image的三级降级链"""
+    import asyncio as _aio
+    try:
+        loop = _aio.get_event_loop()
+        if loop.is_running():
+            raise RuntimeError("in running loop, use gen_image")
+        return loop.run_until_complete(gen_image(desc))
+    except RuntimeError:
+        loop2 = _aio.new_event_loop()
+        try:
+            return loop2.run_until_complete(gen_image(desc))
+        finally:
+            loop2.close()
