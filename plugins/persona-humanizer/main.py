@@ -81,7 +81,7 @@ class WuzihangDelayPlugin(Star):
         return min(d, 12.0)
 
     def _sched_delay(self) -> float:
-        """日程联动打字延迟: 上课回得慢(像偷看手机), 空闲正常"""
+        """日程联动打字延迟: 忙碌场景上限9秒(用户设定), 空闲正常"""
         try:
             cur = open(SCHED_NOW, encoding="utf-8").read()
         except Exception:
@@ -89,11 +89,11 @@ class WuzihangDelayPlugin(Star):
         if random.random() < 0.18:            # 正好在看手机, 秒级
             return random.uniform(1.5, 4.0)
         if any(k in cur for k in ("课", "考试")):
-            return random.uniform(16.0, 45.0)
+            return random.uniform(4.0, 9.0)
         if any(k in cur for k in ("图书馆", "作业", "自习", "赶")):
-            return random.uniform(9.0, 26.0)
+            return random.uniform(3.5, 8.0)
         if any(k in cur for k in ("睡", "躺")):
-            return random.uniform(14.0, 38.0)
+            return random.uniform(4.0, 9.0)
         return random.uniform(2.5, 9.0)
 
     # ---------- 表情包检索 ----------
